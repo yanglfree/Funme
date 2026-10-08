@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../art/mascot.dart';
 import '../game/duel.dart';
+import '../layout/side_panel_scope.dart';
 import '../theme/palette.dart';
 import 'candy_button.dart';
 import 'candy_panel.dart';
@@ -119,12 +120,13 @@ class _SetupSheetState extends State<_SetupSheet> {
     final visible = widget.groups
         .where((g) => g.visibleWhen?.call(_values) ?? true)
         .toList();
+    final wide = isWideLandscape(MediaQuery.sizeOf(context));
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: 560,
+            maxWidth: wide ? 760 : 560,
             maxHeight: MediaQuery.sizeOf(context).height * 0.86,
           ),
           child: CandyPanel(
@@ -146,36 +148,54 @@ class _SetupSheetState extends State<_SetupSheet> {
                       duration: const Duration(milliseconds: 260),
                       curve: Curves.easeOutCubic,
                       alignment: Alignment.topCenter,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final group in visible) ...[
-                            const SizedBox(height: 12),
-                            Text(group.title,
-                                style: FunText.body(
-                                    color: Palette.inkSoft, size: 14)),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (final choice in group.choices)
-                                  _ChoiceChip(
-                                    choice: choice,
-                                    selected:
-                                        _values[group.key] == choice.value,
-                                    onTap: () => setState(() =>
-                                        _values[group.key] = choice.value),
+                      child: LayoutBuilder(
+                        builder: (context, box) {
+                          // Wide screens: two groups side by side so the
+                          // start button stays visible without scrolling.
+                          final colWidth =
+                              wide ? (box.maxWidth - 24) / 2 : box.maxWidth;
+                          return Wrap(
+                            spacing: 24,
+                            children: [
+                              for (final group in visible)
+                                SizedBox(
+                                  width: colWidth,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      const SizedBox(height: 12),
+                                      Text(group.title,
+                                          style: FunText.body(
+                                              color: Palette.inkSoft,
+                                              size: 14)),
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          for (final choice in group.choices)
+                                            _ChoiceChip(
+                                              choice: choice,
+                                              selected: _values[group.key] ==
+                                                  choice.value,
+                                              onTap: () => setState(() =>
+                                                  _values[group.key] =
+                                                      choice.value),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                              ],
-                            ),
-                          ],
-                        ],
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                SizedBox(height: wide ? 12 : 18),
                 CandyButton(
                   label: widget.startLabel,
                   icon: Icons.play_arrow_rounded,

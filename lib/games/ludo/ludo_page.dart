@@ -9,6 +9,7 @@ import '../../core/audio/sound_service.dart';
 import '../../core/feedback/fx.dart';
 import '../../core/game/duel.dart';
 import '../../core/game/party.dart';
+import '../../core/layout/side_panel_scope.dart';
 import '../../core/theme/palette.dart';
 import '../../core/widgets/flash_banner.dart';
 import '../../core/widgets/party_frame.dart';
@@ -279,29 +280,39 @@ class _DiceBar extends StatelessWidget {
     } else {
       prompt = '点一架发光的飞机';
     }
+    final stacked = SidePanelScope.of(context);
+    final promptText = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: Text(
+        prompt,
+        key: ValueKey(prompt),
+        style: FunText.title(size: 18, color: Palette.ink),
+        textAlign: stacked ? TextAlign.center : TextAlign.right,
+      ),
+    );
+    final dice = _Dice(
+      value: s.lastRoll ?? 6,
+      rolling: s.dice != null,
+      rollKey: controller.state,
+      candy: _posCandies[seatPos],
+      enabled: canRoll,
+      onTap: controller.humanRoll,
+    );
+    if (stacked) {
+      return Column(
+        children: [
+          dice,
+          const SizedBox(height: 10),
+          SizedBox(height: 48, child: Center(child: promptText)),
+        ],
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Flexible(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: Text(
-              prompt,
-              key: ValueKey(prompt),
-              style: FunText.title(size: 18, color: Palette.ink),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ),
+        Flexible(child: promptText),
         const SizedBox(width: 14),
-        _Dice(
-          value: s.lastRoll ?? 6,
-          rolling: s.dice != null,
-          rollKey: controller.state,
-          candy: _posCandies[seatPos],
-          enabled: canRoll,
-          onTap: controller.humanRoll,
-        ),
+        dice,
       ],
     );
   }

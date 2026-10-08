@@ -279,14 +279,14 @@ class _SnakePageState extends State<SnakePage>
         ],
         header: ValueListenableBuilder<int>(
           valueListenable: _frame,
-          builder: (context, _, __) => Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          builder: (context, _, __) => Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 6,
             children: [
               CandyChip(
                   label: '分数 ${_game.score}', candy: Candy.sun, fontSize: 16),
-              const SizedBox(width: 10),
               CandyChip(label: '最高 $best', candy: Candy.cream, fontSize: 16),
-              const SizedBox(width: 10),
               CandyChip(
                   label: '长度 ${_game.body.length}',
                   candy: Candy.mint,

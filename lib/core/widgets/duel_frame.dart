@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../game/duel.dart';
+import '../layout/side_panel_scope.dart';
 import '../game/game_info.dart';
 import '../storage/app_store.dart';
 import '../theme/palette.dart';
@@ -213,34 +214,33 @@ class _PlayersBar<S, M> extends StatelessWidget {
   Widget build(BuildContext context) {
     final active =
         controller.outcome == null && controller.started ? controller.turn : -1;
+    final stacked = SidePanelScope.of(context);
+    Widget badge(int i) => _PlayerBadge(
+          side: sides[i],
+          role: _role(i),
+          active: active == i,
+          thinking: active == i && controller.thinking,
+        );
+    final vs = Padding(
+      padding: stacked
+          ? const EdgeInsets.symmetric(vertical: 4)
+          : const EdgeInsets.symmetric(horizontal: 8),
+      child: Text('VS',
+          textAlign: TextAlign.center,
+          style: FunText.title(color: Palette.ink, size: 18).copyWith(
+            shadows: const [
+              Shadow(color: Colors.white, offset: Offset(0, 2), blurRadius: 0)
+            ],
+          )),
+    );
+    if (stacked) {
+      return Column(children: [badge(0), vs, badge(1)]);
+    }
     return Row(
       children: [
-        Expanded(
-          child: _PlayerBadge(
-            side: sides[0],
-            role: _role(0),
-            active: active == 0,
-            thinking: active == 0 && controller.thinking,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text('VS',
-              style: FunText.title(color: Colors.white, size: 20).copyWith(
-                shadows: const [
-                  Shadow(
-                      color: Palette.ink, offset: Offset(0, 2), blurRadius: 0)
-                ],
-              )),
-        ),
-        Expanded(
-          child: _PlayerBadge(
-            side: sides[1],
-            role: _role(1),
-            active: active == 1,
-            thinking: active == 1 && controller.thinking,
-          ),
-        ),
+        Expanded(child: badge(0)),
+        vs,
+        Expanded(child: badge(1)),
       ],
     );
   }

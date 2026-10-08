@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../game/game_info.dart';
 import '../game/party.dart';
+import '../layout/side_panel_scope.dart';
 import '../storage/app_store.dart';
 import '../theme/palette.dart';
 import 'game_scaffold.dart';
@@ -181,7 +182,8 @@ class _SeatsBar<S, M> extends StatelessWidget {
     final active =
         controller.started && controller.outcome == null ? controller.turn : -1;
     final count = seats.length;
-    final perRow = count <= 4 ? count : 3;
+    final stacked = SidePanelScope.of(context);
+    final perRow = stacked ? 1 : (count <= 4 ? count : 3);
     final rows = <List<int>>[];
     for (var i = 0; i < count; i += perRow) {
       rows.add([for (var k = i; k < i + perRow && k < count; k++) k]);
@@ -202,7 +204,7 @@ class _SeatsBar<S, M> extends StatelessWidget {
                         role: _role(i),
                         active: i == active,
                         thinking: i == active && controller.thinking,
-                        compact: perRow >= 4 || count > 4,
+                        compact: !stacked && (perRow >= 4 || count > 4),
                       ),
                     ),
                   ),

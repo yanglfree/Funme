@@ -7,6 +7,7 @@ import '../../core/art/shapes.dart';
 import '../../core/audio/sound_service.dart';
 import '../../core/feedback/fx.dart';
 import '../../core/game/game_info.dart';
+import '../../core/layout/side_panel_scope.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/theme/palette.dart';
 import '../../core/widgets/candy_button.dart';
@@ -87,6 +88,35 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return 5;
   }
 
+  Widget _grid(List<GameInfo> games, int columns, EdgeInsets padding) {
+    return SliverPadding(
+      padding: padding,
+      sliver: ListenableBuilder(
+        listenable: AppStore.instance,
+        builder: (context, _) => SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 18,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.78,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            childCount: games.length,
+            (context, i) => _staggered(
+              i,
+              GameCard(
+                key: ValueKey(games[i].id),
+                info: games[i],
+                idle: _idle,
+                phase: (i * 0.137) % 1.0,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final games = _visible;
@@ -98,42 +128,78 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           bottom: false,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final columns = _columns(constraints.maxWidth);
+              if (isWideLandscape(constraints.biggest)) {
+                return _wideLayout(games, constraints.maxWidth);
+              }
               return CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(child: _header()),
                   SliverToBoxAdapter(child: _categories()),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-                    sliver: ListenableBuilder(
-                      listenable: AppStore.instance,
-                      builder: (context, _) => SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 18,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: 0.78,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          childCount: games.length,
-                          (context, i) => _staggered(
-                            i,
-                            GameCard(
-                              key: ValueKey(games[i].id),
-                              info: games[i],
-                              idle: _idle,
-                              phase: (i * 0.137) % 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _grid(games, _columns(constraints.maxWidth),
+                      const EdgeInsets.fromLTRB(16, 8, 16, 40)),
                 ],
               );
             },
           ),
         ),
+      ),
+    );
+  }
+
+  /// Wide landscape: identity, stats and category filter live in a left
+  /// rail, so the whole width right of it is spent on the game grid.
+  Widget _wideLayout(List<GameInfo> games, double width) {
+    const railWidth = 230.0;
+    final columns = ((width - railWidth - 32) / 190).floor().clamp(3, 6);
+    return Row(
+      children: [
+        SizedBox(width: railWidth, child: _rail()),
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              _grid(games, columns, const EdgeInsets.fromLTRB(8, 16, 20, 40)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _rail() {
+    final items = _categoryItems();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: GestureDetector(
+              onTap: _pokeMascot,
+              child: Mascot(mood: _mood, size: 110),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Center(child: _title()),
+          const SizedBox(height: 4),
+          Text(_greeting,
+              textAlign: TextAlign.center,
+              style: FunText.body(color: Palette.ink, size: 14)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _starsBadge(),
+              const SizedBox(width: 8),
+              CandyIconButton(
+                  icon: Icons.settings_rounded, onTap: _openParents, size: 46),
+            ],
+          ),
+          const SizedBox(height: 18),
+          for (final item in items) ...[
+            _categoryChip(item, expand: true),
+            const SizedBox(height: 10),
+          ],
+        ],
       ),
     );
   }
@@ -172,14 +238,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onLongPress: !kReleaseMode
-                      ? () => Navigator.of(context).push(
-                          FunRoute(builder: (_) => const ArtGalleryPage()))
-                      : null,
-                  child: const OutlinedText('趣玩岛',
-                      size: 34, textAlign: TextAlign.left),
-                ),
+                _title(),
                 const SizedBox(height: 4),
                 Text(
                   _greeting,
@@ -190,26 +249,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ],
             ),
           ),
-          ListenableBuilder(
-            listenable: AppStore.instance,
-            builder: (context, _) => Container(
-              padding: const EdgeInsets.fromLTRB(6, 4, 12, 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: Palette.ink, width: 2.5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const StarIcon(size: 26),
-                  const SizedBox(width: 4),
-                  Text('${AppStore.instance.totalStars}',
-                      style: FunText.title(size: 18)),
-                ],
-              ),
-            ),
-          ),
+          _starsBadge(),
           const SizedBox(width: 8),
           CandyIconButton(
               icon: Icons.settings_rounded, onTap: _openParents, size: 46),
@@ -218,11 +258,46 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  Widget _title() {
+    return GestureDetector(
+      onLongPress: !kReleaseMode
+          ? () => Navigator.of(context)
+              .push(FunRoute(builder: (_) => const ArtGalleryPage()))
+          : null,
+      child: const OutlinedText('趣玩岛', size: 34, textAlign: TextAlign.left),
+    );
+  }
+
+  Widget _starsBadge() {
+    return ListenableBuilder(
+      listenable: AppStore.instance,
+      builder: (context, _) => Container(
+        padding: const EdgeInsets.fromLTRB(6, 4, 12, 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: Palette.ink, width: 2.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const StarIcon(size: 26),
+            const SizedBox(width: 4),
+            Text('${AppStore.instance.totalStars}',
+                style: FunText.title(size: 18)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<(GameCategory?, String, Candy)> _categoryItems() => [
+        (null, '全部', Candy.sun),
+        for (final c in GameCategory.values) (c, c.label, c.candy),
+      ];
+
   Widget _categories() {
-    final items = <(GameCategory?, String, Candy)>[
-      (null, '全部', Candy.sun),
-      for (final c in GameCategory.values) (c, c.label, c.candy),
-    ];
+    final items = _categoryItems();
     return SizedBox(
       height: 58,
       child: ListView.separated(
@@ -230,42 +305,41 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, i) {
-          final (category, label, candy) = items[i];
-          final selected = category == _category;
-          return Pressable(
-            onTap: () => _selectCategory(category),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutBack,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? candy.face : Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: Palette.ink, width: selected ? 3 : 2),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                            color: candy.shade, offset: const Offset(0, 4))
-                      ]
-                    : const [],
-              ),
-              child: Text(
-                label,
-                style: FunText.title(
-                        size: 16, color: selected ? Colors.white : Palette.ink)
-                    .copyWith(
-                  shadows: selected
-                      ? const [
-                          Shadow(color: Palette.ink, offset: Offset(0, 1.5))
-                        ]
-                      : null,
-                ),
-              ),
-            ),
-          );
-        },
+        itemBuilder: (context, i) => _categoryChip(items[i]),
+      ),
+    );
+  }
+
+  Widget _categoryChip((GameCategory?, String, Candy) item,
+      {bool expand = false}) {
+    final (category, label, candy) = item;
+    final selected = category == _category;
+    return Pressable(
+      onTap: () => _selectCategory(category),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutBack,
+        padding:
+            EdgeInsets.symmetric(horizontal: 18, vertical: expand ? 12 : 0),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? candy.face : Colors.white.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: Palette.ink, width: selected ? 3 : 2),
+          boxShadow: selected
+              ? [BoxShadow(color: candy.shade, offset: const Offset(0, 4))]
+              : const [],
+        ),
+        child: Text(
+          label,
+          style: FunText.title(
+                  size: 16, color: selected ? Colors.white : Palette.ink)
+              .copyWith(
+            shadows: selected
+                ? const [Shadow(color: Palette.ink, offset: Offset(0, 1.5))]
+                : null,
+          ),
+        ),
       ),
     );
   }
