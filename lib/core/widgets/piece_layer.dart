@@ -29,11 +29,15 @@ class AnimatedPieceLayer extends StatefulWidget {
     super.key,
     required this.pieces,
     required this.size,
+    this.pieceSize,
     this.moveDuration = const Duration(milliseconds: 300),
   });
 
   final List<PieceSpec> pieces;
   final double size;
+
+  /// Non-square pieces (e.g. junqi tiles); defaults to [size] × [size].
+  final Size? pieceSize;
   final Duration moveDuration;
 
   @override
@@ -71,7 +75,8 @@ class _AnimatedPieceLayerState extends State<AnimatedPieceLayer> {
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.size;
+    final w = widget.pieceSize?.width ?? widget.size;
+    final h = widget.pieceSize?.height ?? widget.size;
     final live = [...widget.pieces]..sort((a, b) => a.z.compareTo(b.z));
     return Stack(
       clipBehavior: Clip.none,
@@ -79,10 +84,10 @@ class _AnimatedPieceLayerState extends State<AnimatedPieceLayer> {
         for (final p in _dying.values)
           Positioned(
             key: ValueKey('dying-${p.id}'),
-            left: p.center.dx - s / 2,
-            top: p.center.dy - s / 2,
-            width: s,
-            height: s,
+            left: p.center.dx - w / 2,
+            top: p.center.dy - h / 2,
+            width: w,
+            height: h,
             child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 1, end: 0),
               duration: const Duration(milliseconds: 260),
@@ -99,10 +104,10 @@ class _AnimatedPieceLayerState extends State<AnimatedPieceLayer> {
             key: ValueKey(p.id),
             duration: widget.moveDuration,
             curve: Curves.easeInOutCubic,
-            left: p.center.dx - s / 2,
-            top: p.center.dy - s / 2,
-            width: s,
-            height: s,
+            left: p.center.dx - w / 2,
+            top: p.center.dy - h / 2,
+            width: w,
+            height: h,
             child: AnimatedScale(
               scale: p.lifted ? 1.16 : 1,
               duration: const Duration(milliseconds: 260),

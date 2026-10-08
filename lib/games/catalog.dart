@@ -3,6 +3,7 @@ import '../core/game/game_info.dart';
 import '../core/theme/palette.dart';
 import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
+import 'junqi/junqi_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
 
@@ -86,8 +87,29 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const junqi = GameInfo(
+    id: 'junqi',
+    name: '军棋',
+    tagline: '翻翻棋 · 扛军旗',
+    category: GameCategory.board,
+    candy: Candy.mint,
+    icon: GameIcons.junqi,
+    builder: JunqiPage.create,
+    players: '1-2人',
+    age: '7岁+',
+    rules: [
+      '开局所有棋子都背面朝上。第一个翻开的棋子是什么颜色，你就是那一方。',
+      '每回合可以翻开一个棋子，或者走一步自己的棋子。',
+      '官大的吃官小的：司令 > 军长 > 师长 > 旅长 > 团长 > 营长 > 连长 > 排长 > 工兵，一样大就同归于尽。',
+      '炸弹碰到谁都会一起消失；地雷和军旗不能移动，碰到地雷的棋子会被炸掉，只有工兵能排雷。',
+      '黑白条纹的是铁路，可以一口气走很远；工兵在铁路上还能拐弯。',
+      '圆圈是行营，躲在里面不会被吃。扛走对方的军旗就赢啦！',
+    ],
+  );
+
   static const all = <GameInfo>[
     xiangqi,
+    junqi,
     jungle,
     gomoku,
     tictactoe,
