@@ -36,6 +36,9 @@ class XiangqiController extends DuelController<XqState, XqMove> {
       final mated = state.inCheck(state.turn);
       return DuelOutcome.win(1 - state.turn, mated ? '将死对方' : '对方无棋可走（困毙）');
     }
+    if (state.repetitions >= 3) {
+      return const DuelOutcome.draw('同一局面出现三次');
+    }
     if (state.quiet >= XqState.quietLimit) {
       return const DuelOutcome.draw('六十回合没有吃子');
     }
@@ -44,7 +47,8 @@ class XiangqiController extends DuelController<XqState, XqMove> {
 
   @override
   Future<XqMove?> aiMove(XqState s, AiLevel level) async {
-    final code = await compute(xiangqiAiEntry, (s.board, s.turn, level.index));
+    final code = await compute(
+        xiangqiAiEntryWithHistory, (s.board, s.turn, level.index, s.history));
     return code < 0 ? null : XqMove(code >> 7, code & 127);
   }
 

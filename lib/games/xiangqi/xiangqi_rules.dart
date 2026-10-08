@@ -50,6 +50,7 @@ class XqState {
     required this.turn,
     this.quiet = 0,
     this.lastCapture,
+    this.history = const [],
   });
 
   factory XqState.initial() {
@@ -94,7 +95,19 @@ class XqState {
   /// Piece captured by the move that produced this state, if any.
   final int? lastCapture;
 
+  /// Position keys (see [XqEngine.positionKey]) since the last capture,
+  /// ending with the current position. Captures are irreversible, so older
+  /// positions can never recur.
+  final List<int> history;
+
   static const quietLimit = 120;
+
+  /// How many times the current position has occurred (1 = first time).
+  int get repetitions {
+    if (history.isEmpty) return 1;
+    final now = history.last;
+    return history.where((k) => k == now).length;
+  }
 
   XqState play(XqMove m) {
     final b = List<int>.of(board);
@@ -104,12 +117,21 @@ class XqState {
     b[m.from] = 0;
     i[m.to] = i[m.from];
     i[m.from] = 0;
+    final key = XqEngine.positionKey(b, 1 - turn);
     return XqState(
       board: b,
       ids: i,
       turn: 1 - turn,
       quiet: captured == 0 ? quiet + 1 : 0,
       lastCapture: captured == 0 ? null : captured,
+      history: captured == 0
+          ? [
+              ...(history.isEmpty
+                  ? [XqEngine.positionKey(board, turn)]
+                  : history),
+              key
+            ]
+          : [key],
     );
   }
 
@@ -417,10 +439,23 @@ class XqEngine {
   }();
   static const _sideKey = 0x2F5A3C9B1D7E4;
 
-  final _ttKey = List<int>.filled(_ttSize, 0);
-  final _ttScore = Int32List(_ttSize);
-  final _ttInfo = Int32List(_ttSize); // depth | flag << 8 | move << 12
-  final _history = Int32List(90 * 128);
+  // Lazy: `legalMoves()` builds throwaway engines that never search.
+  late final _ttKey = List<int>.filled(_ttSize, 0);
+  late final _ttScore = Int32List(_ttSize);
+  late final _ttInfo = Int32List(_ttSize); // depth | flag << 8 | move << 12
+  late final _history = Int32List(90 * 128);
+
+  /// Occurrence counts of positions on the current game + search path.
+  final _path = <int, int>{};
+
+  static int positionKey(List<int> board, int turn) {
+    var h = turn == 1 ? _sideKey : 0;
+    for (var i = 0; i < 90; i++) {
+      if (board[i] != 0) h ^= _zobrist[board[i] * 90 + i];
+    }
+    return h;
+  }
+
   int _hash = 0;
 
   void _initHash() {
@@ -507,6 +542,9 @@ class XqEngine {
     if (depth <= 0) return _quiesce(side, alpha, beta, qDepth);
 
     final key = _hash ^ (side == 1 ? _sideKey : 0);
+    // A position already on the path is a repetition: score it as a draw so
+    // the engine steers away from it when ahead and toward it when behind.
+    if (_path.containsKey(key)) return 0;
     final slot = key & (_ttSize - 1);
     var ttMove = 0;
     if (_ttKey[slot] == key) {
@@ -525,6 +563,7 @@ class XqEngine {
     generate(side, moves);
     _sort(moves, ply, ttMove);
     final alpha0 = alpha;
+    _path[key] = 1;
     var legal = 0;
     var best = -mate;
     var bestMove = 0;
@@ -543,7 +582,10 @@ class XqEngine {
         score = -_search(1 - side, depth - 1, -beta, -alpha, ply + 1);
       }
       _undo(m, captured);
-      if (_aborted) return 0;
+      if (_aborted) {
+        _path.remove(key);
+        return 0;
+      }
       if (score > best) {
         best = score;
         bestMove = m;
@@ -557,6 +599,7 @@ class XqEngine {
         break;
       }
     }
+    _path.remove(key);
     // No legal move: checkmate or stalemate — both lose in xiangqi.
     if (legal == 0) return -mate + ply;
     final flag = best <= alpha0 ? _upper : (best >= beta ? _lower : _exact);
@@ -571,12 +614,17 @@ class XqEngine {
       {required int maxDepth,
       int timeMs = 1500,
       int noise = 0,
+      List<int> history = const [],
       math.Random? random}) {
     final rnd = random ?? math.Random();
     final root = legalMoves(side);
     if (root.isEmpty) return null;
     if (root.length == 1) return root.first;
     _initHash();
+    _path.clear();
+    for (final k in history) {
+      _path[k] = 1;
+    }
     _clock
       ..reset()
       ..start();
@@ -610,13 +658,20 @@ class XqEngine {
 }
 
 /// Isolate entry: (board, side, level) → encoded move or -1.
-int xiangqiAiEntry((List<int>, int, int) args) {
-  final (board, side, level) = args;
+int xiangqiAiEntry((List<int>, int, int) args) =>
+    xiangqiAiEntryWithHistory((args.$1, args.$2, args.$3, const []));
+
+/// Like [xiangqiAiEntry], aware of earlier positions so it can dodge or seek
+/// repetitions.
+int xiangqiAiEntryWithHistory((List<int>, int, int, List<int>) args) {
+  final (board, side, level, history) = args;
   final engine = XqEngine(board)..qDepth = 6;
   final move = switch (level) {
-    0 => engine.bestMove(side, maxDepth: 3, timeMs: 900, noise: 30),
-    1 => engine.bestMove(side, maxDepth: 6, timeMs: 2000, noise: 4),
-    _ => engine.bestMove(side, maxDepth: 14, timeMs: 3200),
+    0 => engine.bestMove(side,
+        maxDepth: 3, timeMs: 900, noise: 30, history: history),
+    1 => engine.bestMove(side,
+        maxDepth: 6, timeMs: 2000, noise: 4, history: history),
+    _ => engine.bestMove(side, maxDepth: 14, timeMs: 3200, history: history),
   };
   return move ?? -1;
 }

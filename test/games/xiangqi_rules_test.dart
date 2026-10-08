@@ -103,4 +103,37 @@ void main() {
     expect(m, isNot(-1));
     expect(watch.elapsedMilliseconds, lessThan(3600));
   });
+
+  test('repeating positions are counted', () {
+    var s = custom({
+      sq(4, 9): Xq.make(Xq.king, 0),
+      sq(3, 0): Xq.make(Xq.king, 1),
+      sq(0, 9): Xq.make(Xq.rook, 0),
+      sq(8, 0): Xq.make(Xq.rook, 1),
+    });
+    expect(s.repetitions, 1);
+    for (var i = 0; i < 2; i++) {
+      s = s.play(XqMove(sq(0, 9), sq(0, 8)));
+      s = s.play(XqMove(sq(8, 0), sq(8, 1)));
+      s = s.play(XqMove(sq(0, 8), sq(0, 9)));
+      s = s.play(XqMove(sq(8, 1), sq(8, 0)));
+    }
+    expect(s.repetitions, 3);
+  });
+
+  test('AI avoids a repetition when it is clearly ahead', () {
+    var s = custom({
+      sq(4, 9): Xq.make(Xq.king, 0),
+      sq(3, 0): Xq.make(Xq.king, 1),
+      sq(0, 9): Xq.make(Xq.rook, 0),
+      sq(8, 0): Xq.make(Xq.rook, 1),
+      sq(5, 6): Xq.make(Xq.pawn, 0),
+    });
+    final first = xiangqiAiEntry((s.board, 0, 2));
+    // Pretend the position after that move has already occurred.
+    final after = s.play(XqMove(first >> 7, first & 127));
+    final again = xiangqiAiEntryWithHistory(
+        (s.board, 0, 2, [XqEngine.positionKey(after.board, 1)]));
+    expect(again, isNot(first));
+  });
 }
