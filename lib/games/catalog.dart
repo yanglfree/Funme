@@ -6,6 +6,7 @@ import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
 import 'ludo/ludo_page.dart';
+import 'snake/snake_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
 
@@ -149,6 +150,25 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const snake = GameInfo(
+    id: 'snake',
+    name: '贪吃蛇',
+    tagline: '吃水果 长长长',
+    category: GameCategory.arcade,
+    candy: Candy.mint,
+    icon: GameIcons.snake,
+    builder: SnakePage.create,
+    players: '1人',
+    age: '5岁+',
+    rules: [
+      '在棋盘上滑动手指，或者按方向键，告诉小蛇往哪里走。',
+      '吃到水果小蛇会变长，还能得 10 分。',
+      '每吃 5 个水果会出现金色星星，赶快去吃能得 50 分！',
+      '小心别撞到墙（选了“可以穿墙”就不怕）和自己的身体。',
+      '小蛇越长跑得越快，加油冲高分！',
+    ],
+  );
+
   static const all = <GameInfo>[
     ludo,
     checkers,
@@ -157,6 +177,7 @@ abstract final class GameCatalog {
     jungle,
     gomoku,
     tictactoe,
+    snake,
   ];
 }
 
