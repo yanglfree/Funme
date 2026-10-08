@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/layout/adaptive_scale.dart';
 import '../core/theme/fun_theme.dart';
 import '../features/home/home_page.dart';
 import '../features/parents/play_time_guard.dart';
@@ -22,7 +23,9 @@ class FunmeApp extends StatelessWidget {
             textScaler: media.textScaler
                 .clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15),
           ),
-          child: PlayTimeGuard(child: child ?? const SizedBox.shrink()),
+          child: AdaptiveScale(
+            child: PlayTimeGuard(child: child ?? const SizedBox.shrink()),
+          ),
         );
       },
       home: const HomePage(),

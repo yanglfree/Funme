@@ -40,19 +40,61 @@ class GameScaffold extends StatelessWidget {
     Widget content = SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Column(
-          children: [
-            _TopBar(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Wide landscape screens: board on the left, status + controls
+            // in a side panel, instead of a tall stack with a tiny board.
+            final wide = constraints.maxWidth >= 620 &&
+                constraints.maxWidth > constraints.maxHeight * 1.2 &&
+                (header != null || footer != null);
+            final topBar = _TopBar(
               title: title,
               rules: rules,
               onRestart: onRestart,
               actions: actions,
-            ),
-            if (header != null) ...[const SizedBox(height: 8), header!],
-            const SizedBox(height: 8),
-            Expanded(child: body),
-            if (footer != null) ...[const SizedBox(height: 8), footer!],
-          ],
+            );
+            if (wide) {
+              return Column(
+                children: [
+                  topBar,
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(child: body),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: 300,
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (header != null) header!,
+                                  if (header != null && footer != null)
+                                    const SizedBox(height: 16),
+                                  if (footer != null) footer!,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                topBar,
+                if (header != null) ...[const SizedBox(height: 8), header!],
+                const SizedBox(height: 8),
+                Expanded(child: body),
+                if (footer != null) ...[const SizedBox(height: 8), footer!],
+              ],
+            );
+          },
         ),
       ),
     );
