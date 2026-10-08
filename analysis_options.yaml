@@ -1,0 +1,12 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Flutter-OH (HarmonyOS) does not support Color.withValues; the project
+    # must keep Color.withOpacity, so its deprecation notice is silenced.
+    deprecated_member_use: ignore
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    avoid_print: true

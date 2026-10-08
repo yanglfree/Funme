@@ -1,0 +1,45 @@
+name: funme
+description: "Funme - cartoon mini games for kids"
+publish_to: 'none'
+version: 1.0.0+1000000
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio: openharmony-sig fork adds the ohos federated implementation while
+  # keeping the iOS / Android / Web implementations of upstream audioplayers.
+  audioplayers:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_audioplayers.git
+      ref: 1d49261dd9749b9bd4a12cead6775f2ab05df63f
+      path: packages/audioplayers
+
+  # Local storage for settings, stars and best records.
+  shared_preferences: ^2.2.0
+
+dependency_overrides:
+  # ohos forks from openharmony-sig — adds ohos platform support
+  shared_preferences:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      ref: 35fb467533e174411a117b2a030c15d2a3a9687c
+      path: packages/shared_preferences/shared_preferences
+  shared_preferences_ohos:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      ref: 35fb467533e174411a117b2a030c15d2a3a9687c
+      path: packages/shared_preferences/shared_preferences_ohos
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/audio/
