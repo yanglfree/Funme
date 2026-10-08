@@ -7,8 +7,10 @@ import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
 import 'ludo/ludo_page.dart';
+import 'merge2048/merge2048_page.dart';
 import 'reversi/reversi_page.dart';
 import 'snake/snake_page.dart';
+import 'sudoku/sudoku_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
 
@@ -208,6 +210,45 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const merge2048 = GameInfo(
+    id: 'merge2048',
+    name: '2048',
+    tagline: '滑动合并 冲向 2048',
+    category: GameCategory.puzzle,
+    candy: Candy.orange,
+    icon: GameIcons.merge2048,
+    builder: Merge2048Page.create,
+    players: '1人',
+    age: '6岁+',
+    rules: [
+      '上下左右滑动屏幕，所有数字方块会一起往那个方向滑。',
+      '两个相同的数字撞在一起，会合成一个更大的数字（2+2=4，4+4=8……）。',
+      '每次滑动之后，空地上会冒出一个新的 2 或 4。',
+      '合成出 2048 就赢啦！之后还可以继续冲更高的分数。',
+      '方块把格子占满、又没有能合并的时候，游戏就结束了。',
+      '滑错了不要紧，点右上角的撤销按钮可以退回上一步。',
+    ],
+  );
+
+  static const sudoku = GameInfo(
+    id: 'sudoku',
+    name: '数独',
+    tagline: '1到9 不重复',
+    category: GameCategory.puzzle,
+    candy: Candy.grape,
+    icon: GameIcons.sudoku,
+    builder: SudokuPage.create,
+    players: '1人',
+    age: '7岁+',
+    rules: [
+      '把 1 到 9 填进空格，让每一行、每一列、每个粗线框起来的 3×3 小宫里，数字都不重复。',
+      '先点一个空格，再点下面的数字键填进去；再点一次同样的数字可以擦掉。',
+      '填错重复的数字会变红，提醒你检查一下。',
+      '点铅笔按钮可以切换成“记笔记”，在格子里写下可能的小数字。',
+      '实在想不出来，就点灯泡按钮要一个提示，但是星星会少一颗哦。',
+    ],
+  );
+
   static const all = <GameInfo>[
     ludo,
     checkers,
@@ -218,6 +259,8 @@ abstract final class GameCatalog {
     reversi,
     connect4,
     tictactoe,
+    merge2048,
+    sudoku,
     snake,
   ];
 }

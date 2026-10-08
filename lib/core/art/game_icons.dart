@@ -476,6 +476,36 @@ abstract final class GameIcons {
     _label(canvas, '4', b.center, s * 0.13, Colors.white);
   }
 
+  static void sudoku(Canvas canvas, Size size, double t) {
+    final s = size.width;
+    final board = Rect.fromCenter(
+        center: Offset(s * 0.5, s * 0.52), width: s * 0.78, height: s * 0.78);
+    _roundRect(canvas, board, s * 0.07, Colors.white, s * 0.03);
+    final line = Paint()
+      ..color = Palette.ink.withOpacity(0.5)
+      ..strokeWidth = s * 0.012;
+    final cell = board.width / 3;
+    for (var k = 1; k < 3; k++) {
+      canvas.drawLine(Offset(board.left + k * cell, board.top + s * 0.02),
+          Offset(board.left + k * cell, board.bottom - s * 0.02), line);
+      canvas.drawLine(Offset(board.left + s * 0.02, board.top + k * cell),
+          Offset(board.right - s * 0.02, board.top + k * cell), line);
+    }
+    const digits = {0: '5', 4: '3', 8: '9', 2: '1', 6: '7'};
+    for (final e in digits.entries) {
+      final c = Offset(board.left + (e.key % 3 + 0.5) * cell,
+          board.top + (e.key ~/ 3 + 0.5) * cell);
+      _label(canvas, e.value, c, s * 0.2, Candy.grape.shade);
+    }
+    final pulse = 1 + _wave(t, 2) * 0.06;
+    final hl = Rect.fromCenter(
+        center: Offset(board.left + 1.5 * cell, board.top + 0.5 * cell),
+        width: cell * 0.86 * pulse,
+        height: cell * 0.86 * pulse);
+    _roundRect(
+        canvas, hl, s * 0.04, Candy.sun.face.withOpacity(0.85), s * 0.015);
+  }
+
   static void mines(Canvas canvas, Size size, double t) {
     final s = size.width;
     final c = Offset(s * 0.46, s * 0.58);
