@@ -52,13 +52,18 @@ void main() {
     }
   });
 
-  test('takeoff parks on the arrow pad and ends the turn, even on a six', () {
-    final s = LudoState.initial(2)
+  test('takeoff parks on the arrow pad; a six still rolls again', () {
+    final six = LudoState.initial(2)
         .apply(const LudoAction.roll(6))
         .apply(const LudoAction.move(0));
-    expect(s.planes[0][0], Ludo.ready);
+    expect(six.planes[0][0], Ludo.ready);
+    expect(six.turn, 0);
+    expect(six.sixes, 1);
+    expect(six.last!.route.single.kind, LudoStepKind.takeoff);
+    final s = LudoState.initial(2)
+        .apply(const LudoAction.roll(3))
+        .apply(const LudoAction.move(0));
     expect(s.turn, 1);
-    expect(s.last!.route.single.kind, LudoStepKind.takeoff);
     // The next roll walks off the pad: a 1 reaches the start square.
     final t = withPlanes([
       [Ludo.ready, -1, -1, -1],

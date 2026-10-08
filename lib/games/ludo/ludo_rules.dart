@@ -328,8 +328,7 @@ class LudoState {
 
     var p = next[turn][k];
     final fromProgress = p;
-    final tookOff = p == Ludo.yard;
-    if (tookOff) {
+    if (p == Ludo.yard) {
       if (d == Ludo.directRoll) {
         p = Ludo.directProgress;
         add(p, LudoStepKind.takeoff);
@@ -382,8 +381,7 @@ class LudoState {
       }
     }
     next[turn][k] = p;
-    // A six rolls again, except when it was spent on taking off.
-    final again = d == 6 && !tookOff && winnerOf(next) == null;
+    final again = d == 6 && winnerOf(next) == null;
     return LudoState(
       positions: positions,
       planes: next,
