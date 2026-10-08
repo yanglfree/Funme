@@ -128,19 +128,23 @@ void main() {
         .apply(const LudoAction.move(0));
     expect(jump.planes[0][0], 9);
     expect(jump.last!.bonus, LudoStepKind.jump);
+    // Landing straight on the flight square: fly, then jump from the landing.
     final fly = withPlanes([
-      [14, -1, -1, -1],
+      [13, -1, -1, -1],
       [-1, -1, -1, -1]
-    ], dice: 3)
+    ], dice: 4)
         .apply(const LudoAction.move(0));
-    expect(fly.planes[0][0], Ludo.flyTo);
-    expect(fly.last!.bonus, LudoStepKind.fly);
+    expect(fly.planes[0][0], Ludo.flyTo + 4);
+    expect(fly.last!.route.map((l) => l.kind).toList().sublist(4),
+        [LudoStepKind.fly, LudoStepKind.jump]);
+    // Jumping onto the flight square already used the jump: no second one.
     final jumpThenFly = withPlanes([
-      [11, -1, -1, -1],
+      [9, -1, -1, -1],
       [-1, -1, -1, -1]
-    ], dice: 2)
+    ], dice: 4)
         .apply(const LudoAction.move(0));
     expect(jumpThenFly.planes[0][0], Ludo.flyTo);
+    expect(jumpThenFly.last!.bonus, LudoStepKind.fly);
   });
 
   test('landing on an opponent sends it home', () {

@@ -359,25 +359,34 @@ class LudoState {
         p = back;
       }
       captureAt(p);
-      // Landing on an own-colored track square: jump, maybe fly.
-      if (p <= Ludo.lastTrack && p % 4 == 1) {
+      // Landing on an own-colored square jumps four; the flight square then
+      // flies. A move jumps once at most, so a flight that lands on an own
+      // color still owes the jump if none happened before it.
+      var jumped = false;
+      bool ownSquare() => p <= Ludo.lastTrack && p % 4 == 1;
+      void jump() {
+        p += 4;
+        add(p, LudoStepKind.jump);
+        bonus = LudoStepKind.jump;
+        jumped = true;
+        captureAt(p);
+      }
+
+      void fly() {
+        p = Ludo.flyTo;
+        add(p, LudoStepKind.fly);
+        bonus = LudoStepKind.fly;
+        captureAt(p);
+      }
+
+      if (ownSquare()) {
         if (p == Ludo.flyFrom) {
-          p = Ludo.flyTo;
-          add(p, LudoStepKind.fly);
-          bonus = LudoStepKind.fly;
-          captureAt(p);
+          fly();
         } else if (p + 4 <= Ludo.lastTrack) {
-          p += 4;
-          add(p, LudoStepKind.jump);
-          bonus = LudoStepKind.jump;
-          captureAt(p);
-          if (p == Ludo.flyFrom) {
-            p = Ludo.flyTo;
-            add(p, LudoStepKind.fly);
-            bonus = LudoStepKind.fly;
-            captureAt(p);
-          }
+          jump();
+          if (p == Ludo.flyFrom) fly();
         }
+        if (!jumped && ownSquare() && p + 4 <= Ludo.lastTrack) jump();
       }
     }
     next[turn][k] = p;
