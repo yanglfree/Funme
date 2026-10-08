@@ -2,6 +2,7 @@ import '../core/art/game_icons.dart';
 import '../core/game/game_info.dart';
 import '../core/theme/palette.dart';
 import 'gomoku/gomoku_page.dart';
+import 'jungle/jungle_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
 
@@ -65,8 +66,29 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const jungle = GameInfo(
+    id: 'jungle',
+    name: '斗兽棋',
+    tagline: '大象老鼠谁厉害',
+    category: GameCategory.board,
+    candy: Candy.lime,
+    icon: GameIcons.jungle,
+    builder: JunglePage.create,
+    players: '1-2人',
+    age: '5岁+',
+    rules: [
+      '每只动物都有战斗力数字：象8 > 狮7 > 虎6 > 豹5 > 狼4 > 狗3 > 猫2 > 鼠1。',
+      '每次走一格（上下左右），数字大的可以吃掉数字一样或更小的动物。',
+      '小老鼠能钻进象鼻子吃掉大象，但大象吃不了老鼠！',
+      '只有老鼠会游泳；狮子和老虎能直接跳过河，但河里有老鼠挡着就跳不过去。',
+      '对方家门口的陷阱里，谁都能把掉进去的动物吃掉。',
+      '先冲进对方的兽穴（小房子）就赢啦！',
+    ],
+  );
+
   static const all = <GameInfo>[
     xiangqi,
+    jungle,
     gomoku,
     tictactoe,
   ];
