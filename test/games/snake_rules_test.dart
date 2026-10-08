@@ -24,7 +24,8 @@ void main() {
       event = classic.step();
     }
     expect(classic.dead, isTrue);
-    final wrap = SnakeGame(cols: 6, rows: 6, wrap: true, random: math.Random(2));
+    final wrap =
+        SnakeGame(cols: 6, rows: 6, wrap: true, random: math.Random(2));
     for (var i = 0; i < 10; i++) {
       wrap.food = (0, 5); // keep food out of the way
       wrap.step();

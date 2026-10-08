@@ -2,10 +2,12 @@ import '../core/art/game_icons.dart';
 import '../core/game/game_info.dart';
 import '../core/theme/palette.dart';
 import 'checkers/checkers_page.dart';
+import 'connect4/connect4_page.dart';
 import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
 import 'ludo/ludo_page.dart';
+import 'reversi/reversi_page.dart';
 import 'snake/snake_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
@@ -169,6 +171,43 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const reversi = GameInfo(
+    id: 'reversi',
+    name: '黑白棋',
+    tagline: '夹住就翻面',
+    category: GameCategory.board,
+    candy: Candy.slate,
+    icon: GameIcons.reversi,
+    builder: ReversiPage.create,
+    players: '1-2人',
+    age: '6岁+',
+    rules: [
+      '黑棋先下。下的棋子要和自己的另一颗棋子把对方的棋子“夹”在中间。',
+      '被夹住的对方棋子会全部翻面，变成你的颜色！',
+      '横、竖、斜都可以夹，一次能翻好多颗。',
+      '棋盘上的小白点就是可以下的地方；没地方下时会自动跳过。',
+      '下满或者都没地方下时，谁的棋子多谁就赢。四个角最珍贵哦！',
+    ],
+  );
+
+  static const connect4 = GameInfo(
+    id: 'connect4',
+    name: '四子棋',
+    tagline: '投币连四颗',
+    category: GameCategory.board,
+    candy: Candy.sun,
+    icon: GameIcons.connect4,
+    builder: Connect4Page.create,
+    players: '1-2人',
+    age: '4岁+',
+    rules: [
+      '两人轮流把棋子投进一列，棋子会掉到最下面。',
+      '先把四颗自己的棋子连成一条线（横、竖、斜）就赢啦！',
+      '手指按住可以先看看棋子会掉到哪里，松手才投下去。',
+      '别忘了堵住对方快要连成的线！',
+    ],
+  );
+
   static const all = <GameInfo>[
     ludo,
     checkers,
@@ -176,6 +215,8 @@ abstract final class GameCatalog {
     junqi,
     jungle,
     gomoku,
+    reversi,
+    connect4,
     tictactoe,
     snake,
   ];
