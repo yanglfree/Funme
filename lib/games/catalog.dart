@@ -3,6 +3,7 @@ import '../core/game/game_info.dart';
 import '../core/theme/palette.dart';
 import 'gomoku/gomoku_page.dart';
 import 'tictactoe/tictactoe_page.dart';
+import 'xiangqi/xiangqi_page.dart';
 
 /// Every game in the app, in home-screen order.
 abstract final class GameCatalog {
@@ -43,7 +44,29 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const xiangqi = GameInfo(
+    id: 'xiangqi',
+    name: '象棋',
+    tagline: '楚河汉界大作战',
+    category: GameCategory.board,
+    candy: Candy.cherry,
+    icon: GameIcons.xiangqi,
+    builder: XiangqiPage.create,
+    players: '1-2人',
+    age: '6岁+',
+    rules: [
+      '红方先走，双方轮流走一步，把对方的“将/帅”逼得无路可走就赢了。',
+      '车走直线，不限格数；马走“日”字，前面有子挡住（蹩马腿）就不能走。',
+      '相/象走“田”字，田字中心有子不能走，而且不能过河。',
+      '仕/士只能在九宫里斜走一步；将/帅只能在九宫里直走一步，两个老将不能面对面。',
+      '炮平时和车一样走，吃子时必须隔着一个棋子“翻山”去吃。',
+      '兵/卒只能向前，过了河以后还能左右走，但永远不能后退。',
+      '点一下自己的棋子，绿点就是能走的地方，红圈表示可以吃掉对方。',
+    ],
+  );
+
   static const all = <GameInfo>[
+    xiangqi,
     gomoku,
     tictactoe,
   ];

@@ -17,8 +17,11 @@ class _Particle {
     required this.life,
     required this.gravity,
     required this.spin,
+    this.global = false,
   });
 
+  /// Position is in global coordinates until the layer adopts it.
+  bool global;
   Offset position;
   Offset velocity;
   final Color color;
@@ -55,6 +58,7 @@ class ParticleController extends ChangeNotifier {
     double size = 9,
     double gravity = 420,
     double life = 0.9,
+    bool global = false,
   }) {
     for (var i = 0; i < count; i++) {
       final angle = _random.nextDouble() * math.pi * 2;
@@ -69,9 +73,34 @@ class ParticleController extends ChangeNotifier {
         life: life * (0.7 + _random.nextDouble() * 0.5),
         gravity: gravity,
         spin: (_random.nextDouble() - 0.5) * 10,
+        global: global,
       ));
     }
     notifyListeners();
+  }
+
+  /// Burst at [local] inside the widget owning [context], wherever the
+  /// [ParticleLayer] sits in the tree.
+  void burstFrom(
+    BuildContext context,
+    Offset local, {
+    int count = 18,
+    List<Color> colors = defaultColors,
+    ParticleShape shape = ParticleShape.star,
+    double speed = 260,
+    double size = 9,
+  }) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+    burst(
+      box.localToGlobal(local),
+      count: count,
+      colors: colors,
+      shape: shape,
+      speed: speed,
+      size: size,
+      global: true,
+    );
   }
 
   /// Confetti rain falling from the top edge across [width].
@@ -146,7 +175,15 @@ class _ParticleLayerState extends State<ParticleLayer>
   }
 
   void _onEmit() {
-    _live.addAll(widget.controller._drain());
+    final fresh = widget.controller._drain();
+    final box = context.findRenderObject();
+    for (final p in fresh) {
+      if (p.global && box is RenderBox && box.attached) {
+        p.position = box.globalToLocal(p.position);
+        p.global = false;
+      }
+    }
+    _live.addAll(fresh);
     if (!_ticker.isActive && _live.isNotEmpty) {
       _last = Duration.zero;
       _ticker.start();
