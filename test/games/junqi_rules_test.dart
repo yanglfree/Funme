@@ -5,11 +5,16 @@ import 'package:funme/games/junqi/junqi_rules.dart';
 
 int sq(int x, int y) => y * 5 + x;
 
-JqState custom(Map<int, int> pieces, {int turn = 0, List<int> colors = const [0, 1]}) {
+JqState custom(Map<int, int> pieces,
+    {int turn = 0, List<int> colors = const [0, 1]}) {
   final board = List<int>.filled(Jq.cells, 0);
   pieces.forEach((k, v) => board[k] = v);
   var id = 1;
-  return JqState(board: board, ids: [for (final v in board) v == 0 ? 0 : id++], turn: turn, colors: colors);
+  return JqState(
+      board: board,
+      ids: [for (final v in board) v == 0 ? 0 : id++],
+      turn: turn,
+      colors: colors);
 }
 
 int red(int kind) => Jq.make(kind, 0, revealed: true);
@@ -69,7 +74,8 @@ void main() {
   });
 
   test('capturing the flag wins the game', () {
-    final s = custom({sq(2, 6): red(5), sq(2, 5): blue(Jq.flag), sq(0, 0): blue(Jq.mine)});
+    final s = custom(
+        {sq(2, 6): red(5), sq(2, 5): blue(Jq.flag), sq(0, 0): blue(Jq.mine)});
     final after = s.apply(JqAction.move(sq(2, 6), sq(2, 5)));
     expect(after.winner, 0);
   });
@@ -80,8 +86,10 @@ void main() {
       sq(2, 5): blue(Jq.flag),
       sq(4, 6): blue(0),
     });
-    expect(JqAction.decode(junqiAiEntry((s.board, s.ids, 0, s.colors, 1))), JqAction.move(sq(2, 6), sq(2, 5)));
-    final t = custom({sq(1, 8): red(7), sq(1, 7): blue(0), sq(4, 0): blue(Jq.mine)});
+    expect(JqAction.decode(junqiAiEntry((s.board, s.ids, 0, s.colors, 1))),
+        JqAction.move(sq(2, 6), sq(2, 5)));
+    final t =
+        custom({sq(1, 8): red(7), sq(1, 7): blue(0), sq(4, 0): blue(Jq.mine)});
     final a = JqAction.decode(junqiAiEntry((t.board, t.ids, 0, t.colors, 1)));
     expect(a, isNot(JqAction.move(sq(1, 8), sq(1, 7))));
   });

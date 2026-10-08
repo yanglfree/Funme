@@ -1,6 +1,7 @@
 import '../core/art/game_icons.dart';
 import '../core/game/game_info.dart';
 import '../core/theme/palette.dart';
+import 'checkers/checkers_page.dart';
 import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
@@ -107,7 +108,27 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const checkers = GameInfo(
+    id: 'checkers',
+    name: '跳棋',
+    tagline: '弹珠连连跳回家',
+    category: GameCategory.board,
+    candy: Candy.grape,
+    icon: GameIcons.checkers,
+    builder: CheckersPage.create,
+    players: '2-6人',
+    age: '5岁+',
+    rules: [
+      '每个人有 10 颗弹珠，目标是把它们全部搬到正对面的三角营地。',
+      '弹珠可以走到旁边的空洞里，一次走一步。',
+      '如果旁边有任何颜色的弹珠，并且它后面是空洞，就可以跳过去！',
+      '跳过去以后还能接着跳，一口气连跳好多次。',
+      '谁先把对面营地填满就赢啦！',
+    ],
+  );
+
   static const all = <GameInfo>[
+    checkers,
     xiangqi,
     junqi,
     jungle,
