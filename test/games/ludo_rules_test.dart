@@ -13,23 +13,32 @@ LudoState withPlanes(List<List<int>> planes,
     );
 
 void main() {
-  test('track is a closed 52-square loop of touching cells', () {
+  test('track is a closed 52-square loop of touching squares', () {
     expect(Ludo.track.length, 52);
     expect(Ludo.track.toSet().length, 52);
     for (var i = 0; i < 52; i++) {
       final (ax, ay) = Ludo.track[i];
       final (bx, by) = Ludo.track[(i + 1) % 52];
-      // Inner corners step diagonally, like a real board.
-      expect(math.max((ax - bx).abs(), (ay - by).abs()), 1,
+      expect(math.max((ax - bx).abs(), (ay - by).abs()), lessThan(2.3),
           reason: 'gap after $i');
     }
     for (var pos = 0; pos < 4; pos++) {
-      // Each player's start square carries its own color.
-      expect(Ludo.trackColor(Ludo.starts[pos]), pos);
-      // The lane starts next to the last track square.
+      // Start squares wear the previous seat's color; own squares are p % 4 == 1.
+      expect(Ludo.trackColor(Ludo.starts[pos]), (pos + 3) % 4);
+      expect(Ludo.trackColor(Ludo.trackIndex(pos, 1)), pos);
+      expect(Ludo.trackColor(Ludo.trackIndex(pos, Ludo.flyFrom)), pos);
+      // The lane starts next to the last ring square.
       final (lx, ly) = Ludo.lanes[pos].first;
-      final (tx, ty) = Ludo.cell(pos, 50);
-      expect((lx - tx).abs() + (ly - ty).abs(), 1);
+      final (tx, ty) = Ludo.cell(pos, Ludo.lastTrack);
+      expect((lx - tx).abs() + (ly - ty).abs(), lessThan(2.1));
+    }
+  });
+
+  test('flight squares sit across the board along a straight line', () {
+    for (var pos = 0; pos < 4; pos++) {
+      final (ax, ay) = Ludo.cell(pos, Ludo.flyFrom);
+      final (bx, by) = Ludo.cell(pos, Ludo.flyTo);
+      expect(math.min((ax - bx).abs(), (ay - by).abs()), lessThan(0.01));
     }
   });
 
@@ -57,21 +66,21 @@ void main() {
 
   test('landing on own color jumps four, the fly square crosses the board', () {
     final jump = withPlanes([
-      [5, -1, -1, -1],
+      [2, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 3)
         .apply(const LudoAction.move(0));
-    expect(jump.planes[0][0], 12);
+    expect(jump.planes[0][0], 9);
     expect(jump.last!.bonus, LudoStepKind.jump);
     final fly = withPlanes([
-      [17, -1, -1, -1],
+      [14, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 3)
         .apply(const LudoAction.move(0));
     expect(fly.planes[0][0], Ludo.flyTo);
     expect(fly.last!.bonus, LudoStepKind.fly);
     final jumpThenFly = withPlanes([
-      [14, -1, -1, -1],
+      [11, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 2)
         .apply(const LudoAction.move(0));
@@ -88,21 +97,22 @@ void main() {
         .apply(const LudoAction.move(0));
     expect(s.planes[1][0], Ludo.yard);
     expect(s.last!.captured, [(1, 0, opponentProgress)]);
+    expect(s.last!.captureLegs, [2]);
   });
 
   test('the goal needs an exact roll and overshoot bounces back', () {
     final exact = withPlanes([
-      [53, -1, -1, -1],
+      [52, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 3)
         .apply(const LudoAction.move(0));
     expect(exact.planes[0][0], Ludo.goal);
     final bounce = withPlanes([
-      [54, -1, -1, -1],
+      [53, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 5)
         .apply(const LudoAction.move(0));
-    expect(bounce.planes[0][0], 53);
+    expect(bounce.planes[0][0], 52);
   });
 
   test('random AI games always end with a winner', () {

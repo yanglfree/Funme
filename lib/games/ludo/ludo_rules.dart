@@ -1,56 +1,103 @@
 import 'dart:math' as math;
 
-/// 飞行棋 on a 15×15 cross board. Board positions (seat positions) 0–3 go
-/// clockwise: 0 bottom-left yard, 1 top-left, 2 top-right, 3 bottom-right.
+/// 飞行棋 on a 17×17 board with four 4×4 yards in the corners. Board
+/// positions (seat positions) 0–3 go clockwise: 0 bottom-left yard, 1 top-left,
+/// 2 top-right, 3 bottom-right.
 ///
-/// A plane's progress is -1 in the yard, 0–50 on the shared track (relative
-/// to its own start square), 51–55 in its home lane and [goal] when done.
+/// A plane's progress is -1 in the yard, 0–[lastTrack] on the shared ring
+/// (relative to its own start square), 50–54 in its home lane and [goal] when
+/// done. Board coordinates are in grid units; ring squares are rectangles
+/// (1×2 / 2×1) and corner triangles, so a square is described by its polygon.
 abstract final class Ludo {
-  static const goal = 56;
+  static const goal = 55;
   static const yard = -1;
-  static const jumpFrom = 16;
-  static const flyFrom = 20;
-  static const flyTo = 32;
+  static const lastTrack = 49;
+  static const laneStart = 50;
 
-  /// The 52-square loop, clockwise, starting at position 0's start square.
-  static final List<(int, int)> track = [
-    for (var y = 13; y >= 9; y--) (6, y),
-    for (var x = 5; x >= 0; x--) (x, 8),
-    (0, 7),
-    for (var x = 0; x <= 5; x++) (x, 6),
-    for (var y = 5; y >= 0; y--) (6, y),
-    (7, 0),
-    for (var y = 0; y <= 5; y++) (8, y),
-    for (var x = 9; x <= 14; x++) (x, 6),
-    (14, 7),
-    for (var x = 14; x >= 9; x--) (x, 8),
-    for (var y = 9; y <= 14; y++) (8, y),
-    (7, 14),
-    (6, 14),
+  /// Own-colored squares sit at progress % 4 == 1; landing there jumps four.
+  static const flyFrom = 17;
+  static const flyTo = 29;
+
+  static const size = 17.0;
+  static const center = (8.5, 8.5);
+
+  /// The ring squares of position 0's quarter, clockwise from its start
+  /// (bottom arm, left outer corner). The other quarters are rotations.
+  static const List<List<(double, double)>> _quarter = [
+    [(4, 15), (6, 15), (6, 17)],
+    [(4, 14), (6, 14), (6, 15), (4, 15)],
+    [(4, 13), (6, 13), (6, 14), (4, 14)],
+    [(4, 13), (6, 13), (6, 11)],
+    [(4, 13), (4, 11), (6, 11)],
+    [(3, 11), (4, 11), (4, 13), (3, 13)],
+    [(2, 11), (3, 11), (3, 13), (2, 13)],
+    [(2, 13), (0, 11), (2, 11)],
+    [(0, 10), (2, 10), (2, 11), (0, 11)],
+    [(0, 9), (2, 9), (2, 10), (0, 10)],
+    [(0, 8), (2, 8), (2, 9), (0, 9)],
+    [(0, 7), (2, 7), (2, 8), (0, 8)],
+    [(0, 6), (2, 6), (2, 7), (0, 7)],
+  ];
+
+  static (double, double) _rotate((double, double) p, int quarters) {
+    var (x, y) = p;
+    for (var i = 0; i < quarters; i++) {
+      (x, y) = (size - y, x);
+    }
+    return (x, y);
+  }
+
+  static (double, double) _centroid(List<(double, double)> poly) {
+    var sx = 0.0, sy = 0.0;
+    for (final (x, y) in poly) {
+      sx += x;
+      sy += y;
+    }
+    return (sx / poly.length, sy / poly.length);
+  }
+
+  /// Polygon of each of the 52 ring squares, clockwise from position 0's
+  /// start square.
+  static final List<List<(double, double)>> trackShapes = [
+    for (var q = 0; q < 4; q++)
+      for (final shape in _quarter) [for (final p in shape) _rotate(p, q)],
+  ];
+
+  /// Token center of every ring square.
+  static final List<(double, double)> track = [
+    for (final shape in trackShapes) _centroid(shape),
   ];
 
   static const starts = [0, 13, 26, 39];
 
-  static const lanes = <List<(int, int)>>[
-    [(7, 13), (7, 12), (7, 11), (7, 10), (7, 9)],
-    [(1, 7), (2, 7), (3, 7), (4, 7), (5, 7)],
-    [(7, 1), (7, 2), (7, 3), (7, 4), (7, 5)],
-    [(13, 7), (12, 7), (11, 7), (10, 7), (9, 7)],
+  static List<(double, double)> _lane(int x, int y, int dx, int dy) => [
+        for (var i = 0; i < 5; i++) (x + i * dx + 0.5, y + i * dy + 0.5),
+      ];
+
+  static final List<List<(double, double)>> lanes = [
+    _lane(8, 14, 0, -1),
+    _lane(2, 8, 1, 0),
+    _lane(8, 2, 0, 1),
+    _lane(14, 8, -1, 0),
   ];
 
-  /// Top-left cell of each 6×6 yard.
-  static const yards = [(0, 9), (0, 0), (9, 0), (9, 9)];
+  /// Top-left cell of each 4×4 yard.
+  static const yards = [(0, 13), (0, 0), (13, 0), (13, 13)];
 
-  /// Track square color = the board position that owns it.
-  static int trackColor(int trackIndex) => trackIndex % 4;
+  /// Airfield circles inside a yard, relative to its top-left corner.
+  static const yardSlots = [(1.0, 1.0), (3.0, 1.0), (1.0, 3.0), (3.0, 3.0)];
+
+  /// Ring square color = the board position that owns it. Colors cycle along
+  /// the ring, so a start square wears the previous seat's color.
+  static int trackColor(int trackIndex) => (trackIndex + 3) % 4;
 
   static int trackIndex(int position, int progress) =>
       (starts[position] + progress) % 52;
 
-  /// Board cell of a plane at [progress] (not valid for yard / goal).
-  static (int, int) cell(int position, int progress) {
-    if (progress <= 50) return track[trackIndex(position, progress)];
-    return lanes[position][progress - 51];
+  /// Token center of a plane at [progress] (not valid for yard / goal).
+  static (double, double) cell(int position, int progress) {
+    if (progress <= lastTrack) return track[trackIndex(position, progress)];
+    return lanes[position][progress - laneStart];
   }
 
   /// Positions used for each player count, in turn order.
@@ -63,8 +110,7 @@ abstract final class Ludo {
 
 enum LudoStepKind { step, takeoff, jump, fly, home }
 
-/// One leg of a plane's animated route, in board cells (doubles allow yard
-/// slots and the goal to sit between cells).
+/// One leg of a plane's animated route: the target's center in board units.
 class LudoStep {
   const LudoStep(this.x, this.y, this.kind);
 
@@ -80,6 +126,7 @@ class LudoMoveInfo {
     required this.fromProgress,
     required this.route,
     required this.captured,
+    required this.captureLegs,
     required this.bonus,
   });
 
@@ -92,6 +139,9 @@ class LudoMoveInfo {
 
   /// (seat, plane, progress before capture) sent back to the yard.
   final List<(int, int, int)> captured;
+
+  /// For each [captured] entry, the route leg whose landing caused it.
+  final List<int> captureLegs;
 
   /// Jump / fly that happened during the move (for sounds and banners).
   final LudoStepKind? bonus;
@@ -199,27 +249,32 @@ class LudoState {
     final next = [for (final p in planes) List<int>.of(p)];
     final route = <LudoStep>[];
     final captured = <(int, int, int)>[];
+    final captureLegs = <int>[];
     LudoStepKind? bonus;
 
     void add(int progress, LudoStepKind kind) {
       if (progress == Ludo.goal) {
-        route.add(const LudoStep(7, 7, LudoStepKind.home));
+        final (cx, cy) = Ludo.center;
+        route.add(LudoStep(cx, cy, kind));
         return;
       }
       final (x, y) = Ludo.cell(pos, progress);
-      route.add(LudoStep(x.toDouble(), y.toDouble(), kind));
+      route.add(LudoStep(x, y, kind));
     }
 
     void captureAt(int progress) {
-      if (progress > 50) return;
+      if (progress > Ludo.lastTrack) return;
       final at = Ludo.trackIndex(pos, progress);
       for (var seat = 0; seat < next.length; seat++) {
         if (seat == turn) continue;
         for (var j = 0; j < next[seat].length; j++) {
           final q = next[seat][j];
-          if (q >= 0 && q <= 50 && Ludo.trackIndex(positions[seat], q) == at) {
+          if (q >= 0 &&
+              q <= Ludo.lastTrack &&
+              Ludo.trackIndex(positions[seat], q) == at) {
             next[seat][j] = Ludo.yard;
             captured.add((seat, j, q));
+            captureLegs.add(route.length - 1);
           }
         }
       }
@@ -235,7 +290,7 @@ class LudoState {
       final target = p + d;
       if (target <= Ludo.goal) {
         for (var s = p + 1; s <= target; s++) {
-          add(s, LudoStepKind.step);
+          add(s, s == Ludo.goal ? LudoStepKind.home : LudoStepKind.step);
         }
         p = target;
       } else {
@@ -251,13 +306,13 @@ class LudoState {
       }
       captureAt(p);
       // Landing on an own-colored track square: jump, maybe fly.
-      if (p <= 50 && p % 4 == 0) {
+      if (p <= Ludo.lastTrack && p % 4 == 1) {
         if (p == Ludo.flyFrom) {
           p = Ludo.flyTo;
           add(p, LudoStepKind.fly);
           bonus = LudoStepKind.fly;
           captureAt(p);
-        } else if (p + 4 <= 50) {
+        } else if (p + 4 <= Ludo.lastTrack) {
           p += 4;
           add(p, LudoStepKind.jump);
           bonus = LudoStepKind.jump;
@@ -285,6 +340,7 @@ class LudoState {
         fromProgress: fromProgress,
         route: route,
         captured: captured,
+        captureLegs: captureLegs,
         bonus: bonus,
       ),
     );
@@ -301,16 +357,16 @@ class LudoState {
 abstract final class LudoAi {
   /// How many opponent planes could land on our track square next turn.
   static int _threats(LudoState s, int seat, int progress) {
-    if (progress < 0 || progress > 50) return 0;
+    if (progress < 0 || progress > Ludo.lastTrack) return 0;
     final at = Ludo.trackIndex(s.positions[seat], progress);
     var n = 0;
     for (var o = 0; o < s.planes.length; o++) {
       if (o == seat) continue;
       for (final q in s.planes[o]) {
-        if (q < 0 || q > 50) continue;
+        if (q < 0 || q > Ludo.lastTrack) continue;
         final from = Ludo.trackIndex(s.positions[o], q);
         final gap = (at - from) % 52;
-        if (gap >= 1 && gap <= 6 && q + gap <= 50) n++;
+        if (gap >= 1 && gap <= 6 && q + gap <= Ludo.lastTrack) n++;
       }
     }
     return n;
@@ -328,7 +384,7 @@ abstract final class LudoAi {
       v += (p - before).toDouble();
     }
     if (p == Ludo.goal) v += 100;
-    if (p > 50 && before <= 50) v += 25;
+    if (p > Ludo.lastTrack && before <= Ludo.lastTrack) v += 25;
     for (final (_, _, progress) in after.last!.captured) {
       v += 55 + progress * 0.6;
     }

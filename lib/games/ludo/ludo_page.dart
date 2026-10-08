@@ -23,20 +23,67 @@ import 'ludo_rules.dart';
 const _posCandies = [Candy.cherry, Candy.sun, Candy.ocean, Candy.mint];
 const _posNames = ['红色', '黄色', '蓝色', '绿色'];
 
+const _captureMs = 750;
+const _homeFxMs = 900;
+
 int _legMs(LudoStepKind kind) => switch (kind) {
       LudoStepKind.step => 170,
-      LudoStepKind.takeoff => 420,
-      LudoStepKind.jump => 330,
-      LudoStepKind.fly => 720,
-      LudoStepKind.home => 300,
+      LudoStepKind.takeoff => 700,
+      LudoStepKind.jump => 430,
+      LudoStepKind.fly => 1050,
+      LudoStepKind.home => 560,
     };
+
+/// Timing of one move: cumulative leg times plus the capture and arrival
+/// tails that play after the route is finished.
+class _Timeline {
+  _Timeline(this.info) {
+    var t = 0;
+    for (final leg in info.route) {
+      starts.add(t);
+      t += _legMs(leg.kind);
+      ends.add(t);
+    }
+    routeMs = t;
+  }
+
+  final LudoMoveInfo info;
+  final starts = <int>[];
+  final ends = <int>[];
+  late final int routeMs;
+
+  bool get endsHome =>
+      info.route.isNotEmpty && info.route.last.kind == LudoStepKind.home;
+
+  int get totalMs =>
+      math.max(routeMs, 1) +
+      (info.captured.isEmpty ? 0 : _captureMs) +
+      (endsHome ? _homeFxMs : 0);
+}
+
+enum LudoFxKind { takeoff, land, fly, crash, home }
+
+/// A one-shot particle cue at a board position (grid units). Instances are
+/// compared by identity so repeated cues at the same spot still notify.
+class LudoFx {
+  LudoFx(this.kind, this.x, this.y, this.candy);
+
+  final LudoFxKind kind;
+  final double x;
+  final double y;
+  final Candy candy;
+}
+
+(double, double) _yardSlot(int position, int plane) {
+  final (yx, yy) = Ludo.yards[position];
+  final (sx, sy) = Ludo.yardSlots[plane % 4];
+  return (yx + sx, yy + sy);
+}
 
 class LudoController extends PartyController<LudoState, LudoAction> {
   final flash = FlashController();
   final _random = math.Random();
-
-  /// Fires when a plane is captured: (board x, board y) in cells.
-  final ValueNotifier<(double, double)?> crashAt = ValueNotifier(null);
+  final ValueNotifier<LudoFx?> fx = ValueNotifier(null);
 
   @override
   LudoState initialState(PartySetup setup) => LudoState.initial(
@@ -95,9 +142,9 @@ class LudoController extends PartyController<LudoState, LudoAction> {
   @override
   Duration settleTime(LudoState state) {
     if (state.dice != null) return const Duration(milliseconds: 820);
-    final route = state.last?.route ?? const [];
-    final ms = route.fold<int>(0, (sum, leg) => sum + _legMs(leg.kind));
-    return Duration(milliseconds: ms + 380);
+    final last = state.last;
+    if (last == null) return const Duration(milliseconds: 380);
+    return Duration(milliseconds: _Timeline(last).totalMs + 380);
   }
 
   @override
@@ -114,16 +161,23 @@ class LudoController extends PartyController<LudoState, LudoAction> {
       return;
     }
     final info = after.last!;
-    var t = 0;
-    for (final leg in info.route) {
-      final at = t;
-      Timer(Duration(milliseconds: at), () {
+    final tl = _Timeline(info);
+    final candy = _posCandies[after.positions[info.seat]];
+    void at(int ms, VoidCallback fn) => Timer(Duration(milliseconds: ms), fn);
+
+    var from = _yardSlot(after.positions[info.seat], info.plane);
+    for (var i = 0; i < info.route.length; i++) {
+      final leg = info.route[i];
+      final origin = from;
+      from = (leg.x, leg.y);
+      at(tl.starts[i], () {
         switch (leg.kind) {
           case LudoStepKind.step:
             Fx.play(Sfx.hop, volume: 0.8);
           case LudoStepKind.takeoff:
             Fx.play(Sfx.fly, buzz: Buzz.light);
             flash.show('起飞！', candy: Candy.ocean);
+            fx.value = LudoFx(LudoFxKind.takeoff, origin.$1, origin.$2, candy);
           case LudoStepKind.jump:
             Fx.play(Sfx.select, buzz: Buzz.light);
             flash.show('跳！', candy: Candy.sun);
@@ -131,18 +185,30 @@ class LudoController extends PartyController<LudoState, LudoAction> {
             Fx.play(Sfx.fly, buzz: Buzz.medium);
             flash.show('飞越！', candy: Candy.grape);
           case LudoStepKind.home:
-            Fx.play(Sfx.star, buzz: Buzz.medium);
+            Fx.play(Sfx.hop, volume: 0.8);
             flash.show('到家啦！', candy: Candy.mint);
         }
       });
-      t += _legMs(leg.kind);
+      at(tl.ends[i], () {
+        switch (leg.kind) {
+          case LudoStepKind.jump:
+            fx.value = LudoFx(LudoFxKind.land, leg.x, leg.y, candy);
+          case LudoStepKind.fly:
+            fx.value = LudoFx(LudoFxKind.fly, leg.x, leg.y, candy);
+          case LudoStepKind.home:
+            Fx.play(Sfx.star, buzz: Buzz.medium);
+            fx.value = LudoFx(LudoFxKind.home, leg.x, leg.y, candy);
+          case LudoStepKind.step || LudoStepKind.takeoff:
+            break;
+        }
+      });
     }
-    if (info.captured.isNotEmpty) {
-      final last = info.route.last;
-      Timer(Duration(milliseconds: t), () {
+    for (final i in info.captureLegs.toSet()) {
+      final leg = info.route[i];
+      at(tl.ends[i], () {
         Fx.play(Sfx.crash, buzz: Buzz.heavy);
         flash.show('撞机！', candy: Candy.cherry);
-        crashAt.value = (last.x, last.y);
+        fx.value = LudoFx(LudoFxKind.crash, leg.x, leg.y, Candy.cherry);
       });
     }
   }
@@ -150,7 +216,7 @@ class LudoController extends PartyController<LudoState, LudoAction> {
   @override
   void dispose() {
     flash.dispose();
-    crashAt.dispose();
+    fx.dispose();
     super.dispose();
   }
 }
@@ -465,6 +531,7 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 800),
   )..repeat(reverse: true);
   LudoMoveInfo? _animating;
+  _Timeline? _timeline;
   double _cell = 0;
 
   LudoController get _c => widget.controller;
@@ -473,13 +540,13 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _c.addListener(_onState);
-    _c.crashAt.addListener(_onCrash);
+    _c.fx.addListener(_onFx);
   }
 
   @override
   void dispose() {
     _c.removeListener(_onState);
-    _c.crashAt.removeListener(_onCrash);
+    _c.fx.removeListener(_onFx);
     _move.dispose();
     _pulse.dispose();
     super.dispose();
@@ -489,59 +556,89 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
     final last = _c.state.last;
     if (last != null && !identical(last, _animating)) {
       _animating = last;
-      final ms = last.route.fold<int>(0, (sum, leg) => sum + _legMs(leg.kind));
-      _move.duration = Duration(milliseconds: math.max(ms, 1));
+      final tl = _Timeline(last);
+      _timeline = tl;
+      _move.duration = Duration(milliseconds: tl.totalMs);
       _move.forward(from: 0);
     }
-    if (last == null) _animating = null;
+    if (last == null) {
+      _animating = null;
+      _timeline = null;
+    }
     setState(() {});
   }
 
-  void _onCrash() {
-    final at = _c.crashAt.value;
-    if (at == null || _cell == 0) return;
-    widget.particles.burstFrom(
-      context,
-      Offset((at.$1 + 0.5) * _cell, (at.$2 + 0.5) * _cell),
-      count: 28,
-      speed: 320,
-      shape: ParticleShape.dot,
-      colors: const [
-        Color(0xFFFF8C42),
-        Color(0xFFFFC83D),
-        Color(0xFFFFFFFF),
-        Color(0xFF8C9BB5)
-      ],
-    );
+  void _onFx() {
+    final e = _c.fx.value;
+    if (e == null || _cell == 0) return;
+    final at = Offset(e.x * _cell, e.y * _cell);
+    final p = widget.particles;
+    switch (e.kind) {
+      case LudoFxKind.takeoff:
+        p.burstFrom(context, at,
+            count: 12,
+            speed: 150,
+            size: 7,
+            shape: ParticleShape.dot,
+            colors: const [Colors.white, Color(0xFFE5F3FF), Color(0xFFBFE3FF)]);
+      case LudoFxKind.land:
+        p.burstFrom(context, at,
+            count: 12,
+            speed: 190,
+            size: 7,
+            shape: ParticleShape.dot,
+            colors: [e.candy.face, e.candy.light, Colors.white]);
+      case LudoFxKind.fly:
+        p.burstFrom(context, at,
+            count: 18,
+            speed: 280,
+            size: 9,
+            colors: [e.candy.face, e.candy.light, const Color(0xFFFFC83D)]);
+      case LudoFxKind.crash:
+        p.burstFrom(context, at,
+            count: 28,
+            speed: 320,
+            shape: ParticleShape.dot,
+            colors: const [
+              Color(0xFFFF8C42),
+              Color(0xFFFFC83D),
+              Color(0xFFFFFFFF),
+              Color(0xFF8C9BB5)
+            ]);
+      case LudoFxKind.home:
+        p.burstFrom(context, at, count: 34, speed: 400, size: 10, colors: [
+          ...ParticleController.defaultColors,
+          e.candy.face,
+        ]);
+    }
   }
 
   Offset _restPos(int seat, int plane, int progress) {
     final pos = _c.state.positions[seat];
     if (progress == Ludo.yard) {
-      final (yx, yy) = Ludo.yards[pos];
-      const slots = [(1.75, 1.75), (4.25, 1.75), (1.75, 4.25), (4.25, 4.25)];
-      final (sx, sy) = slots[plane % 4];
-      return Offset((yx + sx) * _cell, (yy + sy) * _cell);
+      final (x, y) = _yardSlot(pos, plane);
+      return Offset(x * _cell, y * _cell);
     }
     if (progress == Ludo.goal) {
-      const dirs = [(0.0, 0.55), (-0.55, 0.0), (0.0, -0.55), (0.55, 0.0)];
+      const dirs = [(0.0, 1.05), (-1.05, 0.0), (0.0, -1.05), (1.05, 0.0)];
       final (dx, dy) = dirs[pos];
-      final spread = (plane - 1.5) * 0.18;
-      return Offset((7.5 + dx + (dy != 0 ? spread : 0)) * _cell,
-          (7.5 + dy + (dx != 0 ? spread : 0)) * _cell);
+      final spread = (plane - 1.5) * 0.4;
+      final (cx, cy) = Ludo.center;
+      return Offset((cx + dx + (dy != 0 ? spread : 0)) * _cell,
+          (cy + dy + (dx != 0 ? spread : 0)) * _cell);
     }
     final (x, y) = Ludo.cell(pos, progress);
-    return Offset((x + 0.5) * _cell, (y + 0.5) * _cell);
+    return Offset(x * _cell, y * _cell);
   }
 
   double _heading(int seat, int progress) {
     final pos = _c.state.positions[seat];
-    if (progress < 0) return -math.pi / 4 + pos * math.pi / 2;
-    if (progress >= Ludo.goal) return 0;
+    if (progress < 0) return math.pi / 4 + pos * math.pi / 2;
+    if (progress >= Ludo.goal) return _parkedHeading(pos);
     final (ax, ay) = Ludo.cell(pos, progress);
     final (bx, by) =
-        progress + 1 >= Ludo.goal ? (7, 7) : Ludo.cell(pos, progress + 1);
-    return math.atan2((by - ay).toDouble(), (bx - ax).toDouble()) + math.pi / 2;
+        progress + 1 >= Ludo.goal ? Ludo.center : Ludo.cell(pos, progress + 1);
+    return math.atan2(by - ay, bx - ax) + math.pi / 2;
   }
 
   void _tap(Offset p) {
@@ -561,7 +658,7 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
         best = k;
       }
     }
-    if (best != null && bestD < _cell * 1.4) {
+    if (best != null && bestD < _cell * 1.7) {
       _c.humanMove(best);
     } else {
       Fx.error();
@@ -572,7 +669,7 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _cell = constraints.maxWidth / 15;
+        _cell = constraints.maxWidth / Ludo.size;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (d) => _tap(d.localPosition),
@@ -592,6 +689,7 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
                     restPos: _restPos,
                     heading: _heading,
                     moving: _animating,
+                    timeline: _timeline,
                     move: _move,
                     pulse: _pulse,
                     highlight: _c.canHumanAct && _c.state.dice != null,
@@ -607,137 +705,221 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
   }
 }
 
+/// Direction a plane faces once parked in its goal triangle (pointing in).
+double _parkedHeading(int position) => const [
+      0.0,
+      math.pi / 2,
+      math.pi,
+      -math.pi / 2,
+    ][position];
+
 class _LudoBoardPainter extends CustomPainter {
   _LudoBoardPainter(this.active);
 
   final List<int> active;
 
+  static const _goalTriangles = <List<(double, double)>>[
+    [(7, 10), (10, 10), (8.5, 8.5)],
+    [(7, 7), (7, 10), (8.5, 8.5)],
+    [(7, 7), (10, 7), (8.5, 8.5)],
+    [(10, 7), (10, 10), (8.5, 8.5)],
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
-    final c = size.width / 15;
-    Rect cellRect(int x, int y) => Rect.fromLTWH(x * c, y * c, c, c);
+    final u = size.width / Ludo.size;
+    Offset pt((double, double) p) => Offset(p.$1 * u, p.$2 * u);
+
     final board =
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(c * 0.8));
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(u * 0.9));
     canvas.drawRRect(
-        board.shift(Offset(0, c * 0.2)), Paint()..color = Palette.ink);
+        board.shift(Offset(0, u * 0.22)), Paint()..color = Palette.ink);
     canvas.drawRRect(board, Paint()..color = const Color(0xFFFFFBF2));
     canvas.drawRRect(board, inkStroke(3));
 
-    // Yards.
+    // Yards: a 4×4 pad with four airfield circles.
     for (var pos = 0; pos < 4; pos++) {
       final (yx, yy) = Ludo.yards[pos];
       final candy = _posCandies[pos];
       final on = active.contains(pos);
+      final rect = Rect.fromLTWH(yx * u, yy * u, 4 * u, 4 * u);
       final outer = RRect.fromRectAndRadius(
-          Rect.fromLTWH(yx * c, yy * c, 6 * c, 6 * c).deflate(c * 0.2),
-          Radius.circular(c * 0.9));
+          rect.deflate(u * 0.12), Radius.circular(u * 0.9));
       canvas.drawRRect(
           outer, Paint()..color = on ? candy.face : const Color(0xFFE5DED0));
       canvas.drawRRect(outer, inkStroke(2.5));
       final inner = RRect.fromRectAndRadius(
-          Rect.fromLTWH(yx * c, yy * c, 6 * c, 6 * c).deflate(c * 0.75),
-          Radius.circular(c * 0.6));
+          rect.deflate(u * 0.32), Radius.circular(u * 0.65));
       canvas.drawRRect(inner, Paint()..color = Colors.white.withOpacity(0.92));
-      for (final (sx, sy) in const [
-        (1.75, 1.75),
-        (4.25, 1.75),
-        (1.75, 4.25),
-        (4.25, 4.25)
-      ]) {
-        final center = Offset((yx + sx) * c, (yy + sy) * c);
-        canvas.drawCircle(center, c * 0.72,
+      for (final (sx, sy) in Ludo.yardSlots) {
+        final center = Offset((yx + sx) * u, (yy + sy) * u);
+        canvas.drawCircle(center, u * 0.66,
             Paint()..color = on ? candy.light : const Color(0xFFF1ECE2));
-        canvas.drawCircle(center, c * 0.72,
+        canvas.drawCircle(center, u * 0.66,
             inkStroke(2, color: on ? candy.shade : const Color(0xFFD5CCBA)));
       }
     }
 
-    // Track.
-    for (var i = 0; i < Ludo.track.length; i++) {
-      final (x, y) = Ludo.track[i];
+    // Ring squares.
+    for (var i = 0; i < Ludo.trackShapes.length; i++) {
       final candy = _posCandies[Ludo.trackColor(i)];
-      final r = RRect.fromRectAndRadius(
-          cellRect(x, y).deflate(c * 0.06), Radius.circular(c * 0.22));
-      canvas.drawRRect(r, Paint()..color = candy.face);
-      canvas.drawRRect(r, inkStroke(1.6));
-      canvas.drawCircle(cellRect(x, y).center, c * 0.14,
-          Paint()..color = Colors.white.withOpacity(0.55));
+      final path = _squarePath(Ludo.trackShapes[i], u);
+      canvas.drawPath(path, Paint()..color = candy.face);
+      canvas.drawPath(path, inkStroke(1.6)..strokeJoin = StrokeJoin.round);
+      canvas.drawCircle(pt(Ludo.track[i]), u * 0.26,
+          Paint()..color = Colors.white.withOpacity(0.7));
     }
 
-    // Lanes and the home center.
+    // Home lanes.
     for (var pos = 0; pos < 4; pos++) {
       final candy = _posCandies[pos];
       for (final (x, y) in Ludo.lanes[pos]) {
         final r = RRect.fromRectAndRadius(
-            cellRect(x, y).deflate(c * 0.06), Radius.circular(c * 0.22));
+            Rect.fromCenter(center: pt((x, y)), width: u, height: u)
+                .deflate(u * 0.07),
+            Radius.circular(u * 0.22));
         canvas.drawRRect(r, Paint()..color = candy.light);
         canvas.drawRRect(r, inkStroke(1.6, color: candy.shade));
+        canvas.drawCircle(pt((x, y)), u * 0.2,
+            Paint()..color = Colors.white.withOpacity(0.8));
       }
     }
-    final center = Offset(7.5 * c, 7.5 * c);
-    final corners = [
-      Offset(6 * c, 9 * c),
-      Offset(6 * c, 6 * c),
-      Offset(9 * c, 6 * c),
-      Offset(9 * c, 9 * c)
-    ];
-    for (var pos = 0; pos < 4; pos++) {
-      final a = corners[pos];
-      final b = corners[(pos + 3) % 4];
-      final tri = Path()
-        ..moveTo(a.dx, a.dy)
-        ..lineTo(b.dx, b.dy)
-        ..lineTo(center.dx, center.dy)
-        ..close();
-      canvas.drawPath(tri, Paint()..color = _posCandies[pos].face);
-      canvas.drawPath(tri, inkStroke(2));
-    }
-    paintStar(canvas, center, c * 0.55, outlineWidth: 2);
 
-    // Start arrows and fly routes.
+    // Airports: four triangles meeting at the center.
     for (var pos = 0; pos < 4; pos++) {
-      final (sx, sy) = Ludo.cell(pos, 0);
-      final (nx, ny) = Ludo.cell(pos, 1);
-      final from = cellRect(sx, sy).center;
-      final dir = Offset((nx - sx).toDouble(), (ny - sy).toDouble());
-      final tip = from + dir * c * 0.28;
-      final back = from - dir * c * 0.22;
-      final side = Offset(-dir.dy, dir.dx) * c * 0.22;
-      canvas.drawPath(
-        Path()
-          ..moveTo(tip.dx, tip.dy)
-          ..lineTo(back.dx + side.dx, back.dy + side.dy)
-          ..lineTo(back.dx - side.dx, back.dy - side.dy)
-          ..close(),
-        Paint()..color = Colors.white,
-      );
-      final (fx, fy) = Ludo.cell(pos, Ludo.flyFrom);
-      final (tx, ty) = Ludo.cell(pos, Ludo.flyTo);
-      final a = cellRect(fx, fy).center;
-      final b = cellRect(tx, ty).center;
-      final mid =
-          Offset.lerp(a, b, 0.5)! + (center - Offset.lerp(a, b, 0.5)!) * 0.35;
-      final route = Path()
-        ..moveTo(a.dx, a.dy)
-        ..quadraticBezierTo(mid.dx, mid.dy, b.dx, b.dy);
-      final dash = inkStroke(2.4, color: _posCandies[pos].shade);
-      for (final metric in route.computeMetrics()) {
-        for (var d = 0.0; d < metric.length; d += 12) {
-          canvas.drawPath(
-              metric.extractPath(d, math.min(d + 6, metric.length)), dash);
-        }
+      final tri = Path()
+        ..addPolygon([for (final p in _goalTriangles[pos]) pt(p)], true);
+      canvas.drawPath(tri, Paint()..color = _posCandies[pos].face);
+      canvas.drawPath(tri, inkStroke(2)..strokeJoin = StrokeJoin.round);
+    }
+    paintStar(canvas, pt(Ludo.center), u * 0.5, outlineWidth: 2);
+
+    for (var pos = 0; pos < 4; pos++) {
+      _paintStartMarker(canvas, u, pos);
+      _paintFlight(canvas, u, pos);
+    }
+  }
+
+  /// A ring square inset a little so neighbours show a gap.
+  static Path _squarePath(List<(double, double)> shape, double u) {
+    if (shape.length == 4) {
+      var minX = double.infinity, minY = double.infinity;
+      var maxX = -double.infinity, maxY = -double.infinity;
+      for (final (x, y) in shape) {
+        minX = math.min(minX, x);
+        maxX = math.max(maxX, x);
+        minY = math.min(minY, y);
+        maxY = math.max(maxY, y);
       }
-      canvas.save();
-      canvas.translate(a.dx, a.dy);
-      canvas.rotate(math.atan2(b.dy - a.dy, b.dx - a.dx) + math.pi / 2);
-      GameIcons.paintPlane(canvas, c * 0.6, Candy.cream, outline: 0.08);
-      canvas.restore();
+      return Path()
+        ..addRRect(RRect.fromRectAndRadius(
+            Rect.fromLTRB(minX * u, minY * u, maxX * u, maxY * u)
+                .deflate(u * 0.07),
+            Radius.circular(u * 0.22)));
+    }
+    var cx = 0.0, cy = 0.0;
+    for (final (x, y) in shape) {
+      cx += x / shape.length;
+      cy += y / shape.length;
+    }
+    return Path()
+      ..addPolygon([
+        for (final (x, y) in shape)
+          Offset((cx + (x - cx) * 0.9) * u, (cy + (y - cy) * 0.9) * u),
+      ], true);
+  }
+
+  /// The black arrow badge tucked into the empty corner of a start square.
+  void _paintStartMarker(Canvas canvas, double u, int pos) {
+    final shape = Ludo.trackShapes[Ludo.starts[pos]];
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity;
+    for (final (x, y) in shape) {
+      minX = math.min(minX, x);
+      maxX = math.max(maxX, x);
+      minY = math.min(minY, y);
+      maxY = math.max(maxY, y);
+    }
+    (double, double)? missing;
+    for (final c in [(minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)]) {
+      if (!shape.contains(c)) missing = c;
+    }
+    if (missing == null) return;
+    final (mx, my) = missing;
+    final center = Offset(
+      mx * u + (mx == minX ? 1 : -1) * u * 0.55,
+      my * u + (my == minY ? 1 : -1) * u * 0.55,
+    );
+    final (ax, ay) = Ludo.cell(pos, 0);
+    final (bx, by) = Ludo.cell(pos, 1);
+    final dir = (bx - ax).abs() > (by - ay).abs()
+        ? Offset((bx - ax).sign, 0)
+        : Offset(0, (by - ay).sign);
+    canvas.drawCircle(center, u * 0.44, Paint()..color = Palette.ink);
+    _arrow(canvas, center, dir, u * 0.3, _posCandies[pos].face);
+  }
+
+  void _arrow(Canvas canvas, Offset at, Offset dir, double r, Color color) {
+    final side = Offset(-dir.dy, dir.dx);
+    canvas.drawPath(
+      Path()
+        ..moveTo(at.dx + dir.dx * r, at.dy + dir.dy * r)
+        ..lineTo(at.dx - dir.dx * r * 0.6 + side.dx * r * 0.9,
+            at.dy - dir.dy * r * 0.6 + side.dy * r * 0.9)
+        ..lineTo(at.dx - dir.dx * r * 0.6 - side.dx * r * 0.9,
+            at.dy - dir.dy * r * 0.6 - side.dy * r * 0.9)
+        ..close(),
+      Paint()..color = color,
+    );
+  }
+
+  /// Dashed shortcut across the board, with arrow badges on both ends.
+  void _paintFlight(Canvas canvas, double u, int pos) {
+    final (fx, fy) = Ludo.cell(pos, Ludo.flyFrom);
+    final (tx, ty) = Ludo.cell(pos, Ludo.flyTo);
+    final a = Offset(fx * u, fy * u);
+    final b = Offset(tx * u, ty * u);
+    final dir = (b - a) / (b - a).distance;
+    final candy = _posCandies[pos];
+    final dash = Paint()
+      ..color = candy.shade
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = u * 0.13
+      ..strokeCap = StrokeCap.round;
+    final start = a + dir * u * 0.55;
+    final end = b - dir * u * 0.9;
+    final len = (end - start).distance;
+    for (var d = 0.0; d < len; d += u * 0.5) {
+      canvas.drawLine(
+          start + dir * d, start + dir * math.min(d + u * 0.3, len), dash);
+    }
+    _arrow(canvas, b - dir * u * 0.75, dir, u * 0.34, candy.shade);
+    for (final at in [a, b]) {
+      canvas.drawCircle(at, u * 0.3, Paint()..color = Colors.white);
+      canvas.drawCircle(at, u * 0.3, inkStroke(1.4, color: candy.shade));
+      _arrow(canvas, at, dir, u * 0.2, candy.shade);
     }
   }
 
   @override
   bool shouldRepaint(_LudoBoardPainter old) =>
       old.active.join() != active.join();
+}
+
+/// Where a flying plane is at one instant of a leg.
+class _Pose {
+  const _Pose(this.ground, this.height, this.scale, this.angle);
+
+  final Offset ground;
+  final double height;
+  final double scale;
+  final double angle;
+}
+
+double _lerpAngle(double a, double b, double t) {
+  var d = (b - a) % (math.pi * 2);
+  if (d > math.pi) d -= math.pi * 2;
+  return a + d * t;
 }
 
 class _PlanesPainter extends CustomPainter {
@@ -747,6 +929,7 @@ class _PlanesPainter extends CustomPainter {
     required this.restPos,
     required this.heading,
     required this.moving,
+    required this.timeline,
     required this.move,
     required this.pulse,
     required this.highlight,
@@ -757,81 +940,307 @@ class _PlanesPainter extends CustomPainter {
   final Offset Function(int seat, int plane, int progress) restPos;
   final double Function(int seat, int progress) heading;
   final LudoMoveInfo? moving;
+  final _Timeline? timeline;
   final AnimationController move;
   final Animation<double> pulse;
   final bool highlight;
 
+  Candy _candy(int seat) => _posCandies[state.positions[seat]];
+
   @override
   void paint(Canvas canvas, Size size) {
     final m = moving;
-    final animating = m != null && move.value < 1;
+    final tl = timeline;
+    final active = m != null && tl != null && move.value < 1;
     final movable = highlight ? state.movablePlanes().toSet() : const <int>{};
-    final elapsed = animating
-        ? move.value * (move.duration?.inMilliseconds ?? 1)
-        : double.infinity;
-    final captureTime = m == null
-        ? 0
-        : m.route.fold<int>(0, (sum, leg) => sum + _legMs(leg.kind));
+    final elapsed = active ? move.value * tl.totalMs : double.infinity;
+    final inAir = active && elapsed < tl.routeMs;
+
+    // Captured planes stay put until the attacker lands, then fly home.
+    final hitAt = <int, int>{};
+    final hitFrom = <int, int>{};
+    if (active) {
+      for (var i = 0; i < m.captured.length; i++) {
+        final (s, k, p) = m.captured[i];
+        hitAt[s * 10 + k] = tl.ends[m.captureLegs[i]];
+        hitFrom[s * 10 + k] = p;
+      }
+    }
 
     // Count planes per spot to fan out stacks.
     final spots = <String, int>{};
     for (var seat = 0; seat < state.planes.length; seat++) {
       for (var k = 0; k < state.planes[seat].length; k++) {
         final p = state.planes[seat][k];
-        if (animating && seat == m.seat && k == m.plane) continue;
-        Offset at = restPos(seat, k, p);
+        if (inAir && seat == m.seat && k == m.plane) continue;
+        var at = restPos(seat, k, p);
         var angle = heading(seat, p);
-        // Captured planes stay on the board until the attacker lands.
-        if (animating && elapsed < captureTime) {
-          for (final (cs, ck, cp) in m.captured) {
-            if (cs == seat && ck == k) {
-              at = restPos(seat, k, cp);
-              angle = heading(seat, cp);
+        var scale = p == Ludo.goal ? 0.62 : 1.0;
+        final te = hitAt[seat * 10 + k];
+        if (te != null) {
+          if (elapsed >= te + _captureMs) {
+            // Landed back in the yard: handled as a resting plane.
+          } else if (elapsed >= te) {
+            continue;
+          } else {
+            final from = hitFrom[seat * 10 + k]!;
+            at = restPos(seat, k, from);
+            angle = heading(seat, from);
+            // Brace for impact: a nervous wobble just before the hit.
+            if (elapsed > te - 260) {
+              angle += math.sin(elapsed * 0.05) * 0.35;
             }
           }
         }
         final key = '${(at.dx / 4).round()},${(at.dy / 4).round()}';
         final n = spots.update(key, (v) => v + 1, ifAbsent: () => 0);
-        final offset = Offset(n * cell * 0.16, -n * cell * 0.16);
+        final offset = p == Ludo.goal || p == Ludo.yard
+            ? Offset.zero
+            : Offset(n * cell * 0.16, -n * cell * 0.16);
         if (seat == state.turn && movable.contains(k)) {
-          final r = cell * (0.62 + 0.12 * pulse.value);
+          final r = cell * (0.66 + 0.12 * pulse.value);
           canvas.drawCircle(
               at + offset, r, Paint()..color = Colors.white.withOpacity(0.85));
-          canvas.drawCircle(at + offset, r,
-              inkStroke(3, color: _posCandies[state.positions[seat]].shade));
+          canvas.drawCircle(
+              at + offset, r, inkStroke(3, color: _candy(seat).shade));
         }
-        _plane(canvas, at + offset, angle, _posCandies[state.positions[seat]],
-            1.0);
+        _plane(canvas, at + offset, angle, _candy(seat), scale);
       }
     }
 
-    if (animating) {
-      final pos = state.positions[m.seat];
-      var t = elapsed;
-      var from = restPos(m.seat, m.plane, m.fromProgress);
-      for (final leg in m.route) {
-        final ms = _legMs(leg.kind).toDouble();
-        final to = Offset((leg.x + 0.5) * cell, (leg.y + 0.5) * cell);
-        if (t <= ms) {
-          final f = Curves.easeInOut.transform((t / ms).clamp(0.0, 1.0));
-          final p = Offset.lerp(from, to, f)!;
-          final lift = switch (leg.kind) {
-            LudoStepKind.fly => 1.8,
-            LudoStepKind.jump || LudoStepKind.takeoff => 0.9,
-            _ => 0.35,
-          };
-          final h = math.sin(f * math.pi) * cell * lift;
-          final angle =
-              math.atan2(to.dy - from.dy, to.dx - from.dx) + math.pi / 2;
-          canvas.drawOval(
-              Rect.fromCenter(center: p, width: cell * 0.7, height: cell * 0.3),
-              Paint()..color = Colors.black.withOpacity(0.18));
-          _plane(canvas, p - Offset(0, h), angle, _posCandies[pos],
-              1 + h / cell * 0.25);
-          return;
+    if (!active) return;
+    _effects(canvas, m, tl, elapsed);
+    if (inAir) _mover(canvas, m, tl, elapsed);
+    for (var i = 0; i < m.captured.length; i++) {
+      final (seat, k, from) = m.captured[i];
+      _knockedHome(canvas, seat, k, from, elapsed - tl.ends[m.captureLegs[i]]);
+    }
+  }
+
+  /// Ground target of leg [i]; the final home leg parks in the plane's slot.
+  Offset _legTarget(LudoMoveInfo m, int i) {
+    final leg = m.route[i];
+    if (leg.kind == LudoStepKind.home) {
+      return restPos(m.seat, m.plane, Ludo.goal);
+    }
+    return Offset(leg.x * cell, leg.y * cell);
+  }
+
+  _Pose _pose(LudoStepKind kind, Offset from, Offset to, double f,
+      double fromAngle, double toAngle) {
+    final dir = math.atan2(to.dy - from.dy, to.dx - from.dx) + math.pi / 2;
+    switch (kind) {
+      case LudoStepKind.step:
+        final h = math.sin(f * math.pi) * cell * 0.35;
+        return _Pose(Offset.lerp(from, to, Curves.easeInOut.transform(f))!, h,
+            1 + h / cell * 0.25, dir);
+      case LudoStepKind.jump:
+        final h = math.sin(f * math.pi) * cell * 1.3;
+        return _Pose(Offset.lerp(from, to, Curves.easeInOut.transform(f))!, h,
+            1 + h / cell * 0.22, dir);
+      case LudoStepKind.fly:
+        final h = math.sin(f * math.pi) * cell * 2.6;
+        return _Pose(Offset.lerp(from, to, Curves.easeInOutCubic.transform(f))!,
+            h, 1 + h / cell * 0.2, dir);
+      case LudoStepKind.takeoff:
+        const rev = 0.3;
+        if (f < rev) {
+          // Spool up on the pad: shake and swell before rolling out.
+          final r = f / rev;
+          final shake = math.sin(r * math.pi * 9) * cell * 0.04 * r;
+          return _Pose(from + Offset(shake, 0), 0,
+              1 + 0.14 * math.sin(r * math.pi), fromAngle);
         }
-        t -= ms;
-        from = to;
+        final g = (f - rev) / (1 - rev);
+        final h = math.sin(g * math.pi) * cell * 1.6;
+        return _Pose(
+            Offset.lerp(from, to, Curves.easeInOut.transform(g))!,
+            h,
+            1 + h / cell * 0.25,
+            _lerpAngle(fromAngle, dir, Curves.easeOut.transform(g)));
+      case LudoStepKind.home:
+        final e = Curves.easeOut.transform(f);
+        return _Pose(Offset.lerp(from, to, e)!, (1 - e) * cell * 0.7,
+            1.15 + (0.62 - 1.15) * e, _lerpAngle(dir, toAngle, e));
+    }
+  }
+
+  void _mover(Canvas canvas, LudoMoveInfo m, _Timeline tl, double elapsed) {
+    final candy = _candy(m.seat);
+    final pos = state.positions[m.seat];
+    var from = restPos(m.seat, m.plane, m.fromProgress);
+    var fromAngle = heading(m.seat, m.fromProgress);
+    for (var i = 0; i < m.route.length; i++) {
+      final leg = m.route[i];
+      final to = _legTarget(m, i);
+      if (elapsed < tl.ends[i]) {
+        final f = ((elapsed - tl.starts[i]) / _legMs(leg.kind)).clamp(0.0, 1.0);
+        final toAngle = _parkedHeading(pos);
+        final pose = _pose(leg.kind, from, to, f, fromAngle, toAngle);
+        _trail(canvas, leg.kind, from, to, f, fromAngle, toAngle, candy);
+        final lift = 1 / (1 + pose.height / cell * 0.35);
+        canvas.drawOval(
+            Rect.fromCenter(
+                center: pose.ground,
+                width: cell * 0.7 * lift,
+                height: cell * 0.3 * lift),
+            Paint()..color = Colors.black.withOpacity(0.18 * lift));
+        _plane(canvas, pose.ground - Offset(0, pose.height), pose.angle, candy,
+            pose.scale);
+        return;
+      }
+      fromAngle = math.atan2(to.dy - from.dy, to.dx - from.dx) + math.pi / 2;
+      from = to;
+    }
+  }
+
+  /// Puffs of vapour left behind by takeoffs, jumps and flights.
+  void _trail(Canvas canvas, LudoStepKind kind, Offset from, Offset to,
+      double f, double fromAngle, double toAngle, Candy candy) {
+    if (kind == LudoStepKind.step || kind == LudoStepKind.home) return;
+    final fly = kind == LudoStepKind.fly;
+    final n = fly ? 10 : 5;
+    for (var i = 1; i <= n; i++) {
+      final ff = f - i * (fly ? 0.035 : 0.05);
+      if (ff <= 0) break;
+      final pose = _pose(kind, from, to, ff, fromAngle, toAngle);
+      final fade = 1 - i / (n + 1);
+      canvas.drawCircle(
+          pose.ground - Offset(0, pose.height),
+          cell * (fly ? 0.26 : 0.18) * fade,
+          Paint()
+            ..color =
+                (fly ? candy.light : Colors.white).withOpacity(0.6 * fade));
+    }
+  }
+
+  void _ripple(Canvas canvas, Offset at, double t, Color color, double maxR,
+      {double width = 3}) {
+    if (t <= 0 || t >= 1) return;
+    final e = Curves.easeOut.transform(t);
+    canvas.drawCircle(
+        at,
+        maxR * e,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width * (1 - t) + 0.5
+          ..color = color.withOpacity(1 - t));
+  }
+
+  void _sparkles(Canvas canvas, Offset at, double t, int count, double reach,
+      Color color) {
+    if (t <= 0 || t >= 1) return;
+    final e = Curves.easeOut.transform(t);
+    for (var i = 0; i < count; i++) {
+      final a = i * math.pi * 2 / count + t * 1.4;
+      paintStar(canvas, at + Offset(math.cos(a), math.sin(a)) * reach * e,
+          cell * 0.26 * (1 - t),
+          fill: color, outlineWidth: 1.4, glossy: false);
+    }
+  }
+
+  void _effects(Canvas canvas, LudoMoveInfo m, _Timeline tl, double elapsed) {
+    final candy = _candy(m.seat);
+    var from = restPos(m.seat, m.plane, m.fromProgress);
+    for (var i = 0; i < m.route.length; i++) {
+      final leg = m.route[i];
+      final to = _legTarget(m, i);
+      final since = elapsed - tl.ends[i];
+      switch (leg.kind) {
+        case LudoStepKind.takeoff:
+          _ripple(canvas, from, (elapsed - tl.starts[i]) / 320, candy.light,
+              cell * 1.4,
+              width: 5);
+          _ripple(canvas, to, since / 420, candy.face, cell * 1.1);
+        case LudoStepKind.jump:
+          _ripple(canvas, to, since / 450, candy.face, cell * 1.2, width: 4);
+          _sparkles(canvas, to, since / 450, 5, cell * 1.0, candy.light);
+        case LudoStepKind.fly:
+          _ripple(canvas, to, since / 650, candy.face, cell * 2.2, width: 6);
+          _ripple(canvas, to, (since - 120) / 650, Colors.white, cell * 1.6);
+          _sparkles(
+              canvas, to, since / 650, 8, cell * 2.0, const Color(0xFFFFC83D));
+        case LudoStepKind.home:
+          final t = since / _homeFxMs;
+          final c = Offset(Ludo.center.$1 * cell, Ludo.center.$2 * cell);
+          if (t > 0 && t < 1) {
+            canvas.drawCircle(c, cell * 2.4 * Curves.easeOut.transform(t),
+                Paint()..color = candy.light.withOpacity(0.55 * (1 - t)));
+          }
+          _ripple(canvas, c, t, candy.face, cell * 2.6, width: 6);
+          _ripple(canvas, c, (t - 0.18) / 0.82, Colors.white, cell * 2.0);
+          _sparkles(canvas, c, t, 10, cell * 2.6, const Color(0xFFFFC83D));
+        case LudoStepKind.step:
+          break;
+      }
+      from = to;
+    }
+    for (final i in m.captureLegs.toSet()) {
+      final at = _legTarget(m, i);
+      final since = elapsed - tl.ends[i];
+      _ripple(canvas, at, since / 480, const Color(0xFFFF8C42), cell * 1.7,
+          width: 6);
+      _ripple(canvas, at, (since - 80) / 480, Colors.white, cell * 1.1);
+      if (since > 0 && since < 220) {
+        // Impact flash.
+        canvas.drawCircle(at, cell * 0.8 * (1 - since / 220),
+            Paint()..color = Colors.white.withOpacity(0.9));
+      }
+    }
+  }
+
+  /// The captured plane is knocked out of the sky, tumbling back to its yard.
+  void _knockedHome(
+      Canvas canvas, int seat, int k, int fromProgress, double since) {
+    if (since < 0 || since >= _captureMs) return;
+    final f = since / _captureMs;
+    final from = restPos(seat, k, fromProgress);
+    final to = restPos(seat, k, Ludo.yard);
+    final g = f < 0.15 ? 0.0 : (f - 0.15) / 0.85;
+    final ground = Offset.lerp(from, to, Curves.easeInOutCubic.transform(g))!;
+    final h = math.sin(g * math.pi) * cell * 2.4;
+    final candy = _candy(seat);
+    for (var i = 1; i <= 6; i++) {
+      final gg = g - i * 0.04;
+      if (gg <= 0) break;
+      final p = Offset.lerp(from, to, Curves.easeInOutCubic.transform(gg))!;
+      final hh = math.sin(gg * math.pi) * cell * 2.4;
+      canvas.drawCircle(
+          p - Offset(0, hh),
+          cell * 0.2 * (1 - i / 7),
+          Paint()
+            ..color = const Color(0xFFFF8C42).withOpacity(0.6 * (1 - i / 7)));
+    }
+    final lift = 1 / (1 + h / cell * 0.35);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: ground,
+            width: cell * 0.7 * lift,
+            height: cell * 0.3 * lift),
+        Paint()..color = Colors.black.withOpacity(0.18 * lift));
+    // Dust ring where it lands back in the yard.
+    _ripple(canvas, to, (g - 0.85) / 0.15, candy.light, cell * 1.1);
+    final squash =
+        g > 0.9 ? 1 + 0.18 * math.sin((g - 0.9) / 0.1 * math.pi) : 1.0;
+    _plane(
+        canvas,
+        ground - Offset(0, h),
+        heading(seat, fromProgress) + g * math.pi * 4,
+        candy,
+        (1 + h / cell * 0.2) * squash);
+    if (f < 0.15) {
+      // Dizzy stars right after the hit.
+      for (var i = 0; i < 3; i++) {
+        final a = since * 0.02 + i * math.pi * 2 / 3;
+        paintStar(
+            canvas,
+            from +
+                Offset(math.cos(a) * cell * 0.5,
+                    -cell * 0.7 + math.sin(a) * cell * 0.15),
+            cell * 0.16,
+            fill: const Color(0xFFFFC83D),
+            outlineWidth: 1,
+            glossy: false);
       }
     }
   }
@@ -842,7 +1251,7 @@ class _PlanesPainter extends CustomPainter {
     canvas.translate(at.dx, at.dy);
     canvas.rotate(angle);
     canvas.scale(scale);
-    GameIcons.paintPlane(canvas, cell * 0.92, candy);
+    GameIcons.paintPlane(canvas, cell * 0.98, candy);
     canvas.restore();
   }
 
