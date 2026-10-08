@@ -403,19 +403,69 @@ class XqEngine {
   // ---- Search -------------------------------------------------------------
 
   static const mate = 100000;
+  static const _ttBits = 18;
+  static const _ttSize = 1 << _ttBits;
+  static const _exact = 0, _lower = 1, _upper = 2;
 
-  int _orderScore(int m, int ply) {
+  // Zobrist keys, shared by all engines (52-bit so they are safe on web too).
+  static final List<int> _zobrist = () {
+    final r = math.Random(20261008);
+    return [
+      for (var i = 0; i < 16 * 90; i++)
+        (r.nextInt(1 << 26) << 26) ^ r.nextInt(1 << 26)
+    ];
+  }();
+  static const _sideKey = 0x2F5A3C9B1D7E4;
+
+  final _ttKey = List<int>.filled(_ttSize, 0);
+  final _ttScore = Int32List(_ttSize);
+  final _ttInfo = Int32List(_ttSize); // depth | flag << 8 | move << 12
+  final _history = Int32List(90 * 128);
+  int _hash = 0;
+
+  void _initHash() {
+    _hash = 0;
+    for (var i = 0; i < 90; i++) {
+      if (b[i] != 0) _hash ^= _zobrist[b[i] * 90 + i];
+    }
+  }
+
+  int _do(int m) {
+    final from = m >> 7;
+    final to = m & 127;
+    final captured = b[to];
+    final piece = b[from];
+    _hash ^= _zobrist[piece * 90 + from] ^ _zobrist[piece * 90 + to];
+    if (captured != 0) _hash ^= _zobrist[captured * 90 + to];
+    b[to] = piece;
+    b[from] = 0;
+    return captured;
+  }
+
+  void _undo(int m, int captured) {
+    final from = m >> 7;
+    final to = m & 127;
+    final piece = b[to];
+    _hash ^= _zobrist[piece * 90 + from] ^ _zobrist[piece * 90 + to];
+    if (captured != 0) _hash ^= _zobrist[captured * 90 + to];
+    b[from] = piece;
+    b[to] = captured;
+  }
+
+  int _orderScore(int m, int ply, int ttMove) {
+    if (m == ttMove) return 2000000;
     final victim = b[m & 127];
     if (victim != 0) {
       return 1000000 +
           Xq.values[Xq.type(victim)] * 10 -
           Xq.values[Xq.type(b[m >> 7])] ~/ 10;
     }
-    return _killers[ply] == m ? 900000 : 0;
+    if (_killers[ply] == m) return 900000;
+    return _history[m];
   }
 
-  void _sort(List<int> moves, int ply) {
-    final scored = [for (final m in moves) (m, _orderScore(m, ply))]
+  void _sort(List<int> moves, int ply, [int ttMove = 0]) {
+    final scored = [for (final m in moves) (m, _orderScore(m, ply, ttMove))]
       ..sort((a, c) => c.$2.compareTo(a.$2));
     for (var i = 0; i < moves.length; i++) {
       moves[i] = scored[i].$1;
@@ -432,21 +482,15 @@ class XqEngine {
     generate(side, moves, capturesOnly: true);
     _sort(moves, 99);
     for (final m in moves) {
-      final from = m >> 7;
-      final to = m & 127;
-      final captured = b[to];
-      if (Xq.type(captured) == Xq.king) return mate;
-      b[to] = b[from];
-      b[from] = 0;
+      if (Xq.type(b[m & 127]) == Xq.king) return mate;
+      final captured = _do(m);
       if (!inCheck(side)) {
         final score = -_quiesce(1 - side, -beta, -alpha, depth - 1);
-        b[from] = b[to];
-        b[to] = captured;
+        _undo(m, captured);
         if (score >= beta) return score;
         if (score > alpha) alpha = score;
       } else {
-        b[from] = b[to];
-        b[to] = captured;
+        _undo(m, captured);
       }
     }
     return alpha;
@@ -461,36 +505,64 @@ class XqEngine {
     // Extend while in check (bounded by ply) so forced lines are not cut off.
     if (depth <= 0 && ply < 24 && inCheck(side)) depth = 1;
     if (depth <= 0) return _quiesce(side, alpha, beta, qDepth);
+
+    final key = _hash ^ (side == 1 ? _sideKey : 0);
+    final slot = key & (_ttSize - 1);
+    var ttMove = 0;
+    if (_ttKey[slot] == key) {
+      final info = _ttInfo[slot];
+      ttMove = info >> 12;
+      final score = _ttScore[slot];
+      if ((info & 0xFF) >= depth) {
+        final flag = (info >> 8) & 15;
+        if (flag == _exact) return score;
+        if (flag == _lower && score >= beta) return score;
+        if (flag == _upper && score <= alpha) return score;
+      }
+    }
+
     final moves = <int>[];
     generate(side, moves);
-    _sort(moves, ply);
+    _sort(moves, ply, ttMove);
+    final alpha0 = alpha;
     var legal = 0;
     var best = -mate;
+    var bestMove = 0;
     for (final m in moves) {
-      final from = m >> 7;
-      final to = m & 127;
-      final captured = b[to];
-      b[to] = b[from];
-      b[from] = 0;
+      final captured = _do(m);
       if (inCheck(side)) {
-        b[from] = b[to];
-        b[to] = captured;
+        _undo(m, captured);
         continue;
       }
       legal++;
-      final score = -_search(1 - side, depth - 1, -beta, -alpha, ply + 1);
-      b[from] = b[to];
-      b[to] = captured;
+      // Late quiet moves get a reduced first look; re-search if they surprise.
+      var score = 0;
+      final reduce = depth >= 3 && legal > 6 && captured == 0 ? 1 : 0;
+      score = -_search(1 - side, depth - 1 - reduce, -beta, -alpha, ply + 1);
+      if (reduce == 1 && score > alpha && !_aborted) {
+        score = -_search(1 - side, depth - 1, -beta, -alpha, ply + 1);
+      }
+      _undo(m, captured);
       if (_aborted) return 0;
-      if (score > best) best = score;
+      if (score > best) {
+        best = score;
+        bestMove = m;
+      }
       if (score > alpha) alpha = score;
       if (alpha >= beta) {
-        if (captured == 0) _killers[ply] = m;
+        if (captured == 0) {
+          _killers[ply] = m;
+          _history[m] += depth * depth;
+        }
         break;
       }
     }
     // No legal move: checkmate or stalemate — both lose in xiangqi.
     if (legal == 0) return -mate + ply;
+    final flag = best <= alpha0 ? _upper : (best >= beta ? _lower : _exact);
+    _ttKey[slot] = key;
+    _ttScore[slot] = best;
+    _ttInfo[slot] = depth | flag << 8 | bestMove << 12;
     return best;
   }
 
@@ -504,6 +576,7 @@ class XqEngine {
     final root = legalMoves(side);
     if (root.isEmpty) return null;
     if (root.length == 1) return root.first;
+    _initHash();
     _clock
       ..reset()
       ..start();
@@ -516,15 +589,10 @@ class XqEngine {
       final scored = <(int, int)>[];
       var alpha = -mate - 1;
       for (final m in ordered) {
-        final from = m >> 7;
-        final to = m & 127;
-        final captured = b[to];
-        b[to] = b[from];
-        b[from] = 0;
+        final captured = _do(m);
         var score = -_search(1 - side, depth - 1, -mate - 1,
             -alpha + (noise > 0 ? noise : 0), 1);
-        b[from] = b[to];
-        b[to] = captured;
+        _undo(m, captured);
         if (_aborted) break;
         if (noise > 0) score += rnd.nextInt(noise * 2 + 1) - noise;
         scored.add((m, score));
@@ -546,9 +614,9 @@ int xiangqiAiEntry((List<int>, int, int) args) {
   final (board, side, level) = args;
   final engine = XqEngine(board)..qDepth = 6;
   final move = switch (level) {
-    0 => engine.bestMove(side, maxDepth: 2, timeMs: 800, noise: 45),
-    1 => engine.bestMove(side, maxDepth: 4, timeMs: 2200, noise: 6),
-    _ => engine.bestMove(side, maxDepth: 10, timeMs: 3000),
+    0 => engine.bestMove(side, maxDepth: 3, timeMs: 900, noise: 30),
+    1 => engine.bestMove(side, maxDepth: 6, timeMs: 2000, noise: 4),
+    _ => engine.bestMove(side, maxDepth: 14, timeMs: 3200),
   };
   return move ?? -1;
 }
