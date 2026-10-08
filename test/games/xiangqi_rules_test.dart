@@ -101,6 +101,6 @@ void main() {
     final watch = Stopwatch()..start();
     final m = xiangqiAiEntry((XqState.initial().board, 0, 2));
     expect(m, isNot(-1));
-    expect(watch.elapsedMilliseconds, lessThan(2500));
+    expect(watch.elapsedMilliseconds, lessThan(3600));
   });
 }

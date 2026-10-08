@@ -34,7 +34,11 @@ enum Sfx {
   check,
   slide,
   bomb,
-  combo;
+  combo,
+  undo,
+  hint,
+  unlock,
+  turn;
 
   String get asset => 'audio/$name.wav';
 }
@@ -69,6 +73,14 @@ class SoundService with WidgetsBindingObserver {
             category: AVAudioSessionCategory.ambient,
             options: [AVAudioSessionOptions.mixWithOthers],
           ),
+          // The ohos default is a music stream that keeps the screen awake and
+          // takes exclusive audio focus, so every new cue cut off the previous
+          // one and the BGM. Game-usage streams are mixed instead.
+          ohos: AudioContextOhos(
+            isSpeakerphoneOn: false,
+            stayAwake: false,
+            usageType: OhosUsageType.game,
+          ),
           android: AudioContextAndroid(
             isSpeakerphoneOn: false,
             stayAwake: false,
@@ -87,16 +99,29 @@ class SoundService with WidgetsBindingObserver {
         await player.setReleaseMode(ReleaseMode.stop);
         _pool.add(player);
       }
-      if (!kIsWeb) {
-        await AudioCache.instance.loadAll(
-          [for (final cue in Sfx.values) cue.asset, 'audio/bgm.wav'],
-        );
-      }
+      // Playing works without the preload (it only avoids first-play lag), so
+      // a preload failure must never silence the whole app.
       _ready = true;
     } catch (error) {
       debugPrint('SoundService: init failed: $error');
     }
+    if (_ready && !kIsWeb) unawaited(_preload());
     _syncMusic();
+  }
+
+  Future<void> _preload() async {
+    for (final cue in Sfx.values) {
+      try {
+        await AudioCache.instance.load(cue.asset);
+      } catch (error) {
+        debugPrint('SoundService: preload ${cue.name} failed: $error');
+      }
+    }
+    try {
+      await AudioCache.instance.load('audio/bgm.wav');
+    } catch (error) {
+      debugPrint('SoundService: preload bgm failed: $error');
+    }
   }
 
   void play(Sfx cue, {double volume = 1.0}) {
@@ -108,10 +133,25 @@ class SoundService with WidgetsBindingObserver {
 
   Future<void> _start(AudioPlayer player, Sfx cue, double volume) async {
     try {
-      await player.stop();
       await player.play(AssetSource(cue.asset), volume: volume);
     } catch (error) {
       debugPrint('SoundService: failed to play ${cue.name}: $error');
+      await _replace(player);
+    }
+  }
+
+  /// A player stuck in a bad native state would stay silent forever; swap it
+  /// for a fresh one.
+  Future<void> _replace(AudioPlayer broken) async {
+    final index = _pool.indexOf(broken);
+    if (index < 0) return;
+    try {
+      final fresh = AudioPlayer();
+      await fresh.setReleaseMode(ReleaseMode.stop);
+      _pool[index] = fresh;
+      unawaited(broken.dispose());
+    } catch (error) {
+      debugPrint('SoundService: could not replace player: $error');
     }
   }
 

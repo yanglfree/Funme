@@ -359,6 +359,37 @@ def sfx_combo():
     return env(out, 0.002, 0.03)
 
 
+def sfx_undo():
+    d = 0.22
+    t = secs(d)
+    shape = np.sin(np.pi * t / d) ** 1.2
+    whoosh = bandpass(noise(d), 600, 3000) * shape * 0.9
+    glide = sweep(900, 360, d, 0.8) * shape * 0.45
+    return env(whoosh + glide, 0.004, 0.04)
+
+
+def sfx_hint():
+    out = blank(0.5)
+    for i, n in enumerate(('E6', 'G6', 'C7')):
+        place(out, music_box(note(n), 0.3, 0.8) * (0.85 - i * 0.1), i * 0.09)
+    shimmer = highpass(noise(0.3), 6500) * np.linspace(0.12, 0, int(SR * 0.3))
+    place(out, shimmer, 0.05)
+    return env(out, 0.002, 0.05)
+
+
+def sfx_unlock():
+    out = blank(0.45)
+    place(out, marimba(note('G5'), 0.18) * 0.9, 0)
+    place(out, marimba(note('C6'), 0.3), 0.09)
+    return env(out, 0.002, 0.04)
+
+
+def sfx_turn():
+    t = secs(0.2)
+    x = (np.sin(2 * np.pi * note('A5') * t) + 0.25 * np.sin(2 * np.pi * note('A6') * t)) * np.exp(-t * 14)
+    return env(x * 0.8, 0.002, 0.04)
+
+
 # ---------------------------------------------------------------------------
 # Background music: 8 bars, C major, I–vi–IV–V, seamless loop
 # ---------------------------------------------------------------------------
@@ -417,7 +448,8 @@ CUES = {
     'error': sfx_error, 'win': sfx_win, 'lose': sfx_lose, 'tick': sfx_tick,
     'go': sfx_go, 'eat': sfx_eat, 'whack': sfx_whack, 'pop': sfx_pop,
     'flap': sfx_flap, 'crash': sfx_crash, 'check': sfx_check, 'slide': sfx_slide,
-    'bomb': sfx_bomb, 'combo': sfx_combo,
+    'bomb': sfx_bomb, 'combo': sfx_combo, 'undo': sfx_undo, 'hint': sfx_hint,
+    'unlock': sfx_unlock, 'turn': sfx_turn,
 }
 
 

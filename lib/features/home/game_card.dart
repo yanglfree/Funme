@@ -96,20 +96,23 @@ class GameCard extends StatelessWidget {
                         color: Palette.ink.withOpacity(0.75), size: 12),
                   ),
                   const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CandyChip(
-                          label: info.players,
-                          candy: Candy.cream,
-                          fontSize: 11),
-                      const SizedBox(width: 6),
-                      for (var i = 0; i < 3; i++)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 1),
-                          child: StarIcon(size: 16, filled: i < record.stars),
-                        ),
-                    ],
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CandyChip(
+                            label: info.players,
+                            candy: Candy.cream,
+                            fontSize: 11),
+                        const SizedBox(width: 6),
+                        for (var i = 0; i < 3; i++)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 1),
+                            child: StarIcon(size: 16, filled: i < record.stars),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),

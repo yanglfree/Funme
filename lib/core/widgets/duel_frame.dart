@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../audio/sound_service.dart';
+import '../feedback/fx.dart';
 import '../game/duel.dart';
 import '../layout/side_panel_scope.dart';
 import '../game/game_info.dart';
@@ -154,6 +156,29 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
     }
   }
 
+  /// Shrinks below 128 so two buttons still fit the 300-wide side panel.
+  Widget _footerButton({
+    required String label,
+    required IconData icon,
+    required Candy candy,
+    required VoidCallback? onTap,
+  }) {
+    return Flexible(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 128),
+        child: CandyButton(
+          label: label,
+          icon: icon,
+          candy: candy,
+          width: double.infinity,
+          fontSize: 18,
+          sound: false,
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GameScaffold(
@@ -173,23 +198,29 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
         builder: (context, _) => Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CandyButton(
+            _footerButton(
               label: '悔棋',
               icon: Icons.undo_rounded,
               candy: Candy.ocean,
-              width: 128,
-              fontSize: 18,
-              onTap: _c.canUndo ? _c.undo : null,
+              onTap: _c.canUndo
+                  ? () {
+                      Fx.play(Sfx.undo, buzz: Buzz.light);
+                      _c.undo();
+                    }
+                  : null,
             ),
             if (widget.hintEnabled) ...[
               const SizedBox(width: 14),
-              CandyButton(
+              _footerButton(
                 label: '提示',
                 icon: Icons.lightbulb_rounded,
                 candy: Candy.sun,
-                width: 128,
-                fontSize: 18,
-                onTap: _c.canHumanAct ? _c.requestHint : null,
+                onTap: _c.canHumanAct
+                    ? () {
+                        Fx.play(Sfx.hint, buzz: Buzz.light);
+                        _c.requestHint();
+                      }
+                    : null,
               ),
             ],
           ],

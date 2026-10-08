@@ -366,15 +366,35 @@ class XqEngine {
     }
   }
 
+  /// Whether [evaluate] rewards pieces for pressing on the enemy king.
+  bool kingPressure = true;
+
   /// Static score from [side]'s point of view.
   int evaluate(int side) {
     var score = 0;
+    final kings = [kingSquare(0), kingSquare(1)];
     for (var i = 0; i < 90; i++) {
       final v = b[i];
       if (v == 0) continue;
       final t = Xq.type(v);
       final s = Xq.side(v);
-      final value = Xq.values[t] + _positional(t, s, i % 9, i ~/ 9);
+      final x = i % 9;
+      final y = i ~/ 9;
+      var value = Xq.values[t] + _positional(t, s, x, y);
+      if (kingPressure) {
+        final k = kings[1 - s];
+        if (k >= 0) {
+          final dist = (x - k % 9).abs() + (y - k ~/ 9).abs();
+          final weight = switch (t) {
+            Xq.rook => 3,
+            Xq.horse => 4,
+            Xq.cannon => 3,
+            Xq.pawn => 2,
+            _ => 0,
+          };
+          value += weight * (14 - dist);
+        }
+      }
       score += s == side ? value : -value;
     }
     return score;
@@ -438,6 +458,8 @@ class XqEngine {
     }
     if (_aborted) return 0;
     nodes++;
+    // Extend while in check (bounded by ply) so forced lines are not cut off.
+    if (depth <= 0 && ply < 24 && inCheck(side)) depth = 1;
     if (depth <= 0) return _quiesce(side, alpha, beta, qDepth);
     final moves = <int>[];
     generate(side, moves);
@@ -522,11 +544,11 @@ class XqEngine {
 /// Isolate entry: (board, side, level) → encoded move or -1.
 int xiangqiAiEntry((List<int>, int, int) args) {
   final (board, side, level) = args;
-  final engine = XqEngine(board)..qDepth = level == 0 ? 0 : 4;
+  final engine = XqEngine(board)..qDepth = 6;
   final move = switch (level) {
-    0 => engine.bestMove(side, maxDepth: 1, noise: 160),
-    1 => engine.bestMove(side, maxDepth: 3, timeMs: 1200, noise: 12),
-    _ => engine.bestMove(side, maxDepth: 6, timeMs: 1600),
+    0 => engine.bestMove(side, maxDepth: 2, timeMs: 800, noise: 45),
+    1 => engine.bestMove(side, maxDepth: 4, timeMs: 2200, noise: 6),
+    _ => engine.bestMove(side, maxDepth: 10, timeMs: 3000),
   };
   return move ?? -1;
 }

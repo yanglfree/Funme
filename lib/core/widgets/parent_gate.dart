@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../audio/sound_service.dart';
 import '../feedback/fx.dart';
 import '../theme/palette.dart';
 import 'candy_button.dart';
@@ -16,7 +17,7 @@ Future<bool> showParentGate(BuildContext context,
     barrierColor: Palette.ink.withOpacity(0.5),
     builder: (context) => Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: ParentGatePanel(
           reason: reason,
           onDone: (ok) => Navigator.of(context).pop(ok),
@@ -79,6 +80,7 @@ class _ParentGatePanelState extends State<ParentGatePanel>
 
   void _submit() {
     if (int.tryParse(_input) == _a * _b) {
+      Fx.play(Sfx.unlock, buzz: Buzz.light);
       widget.onDone(true);
       return;
     }
@@ -92,72 +94,79 @@ class _ParentGatePanelState extends State<ParentGatePanel>
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 340),
-      child: Material(
-        type: MaterialType.transparency,
-        child: AnimatedBuilder(
-          animation: _shake,
-          builder: (context, child) => Transform.translate(
-            offset: Offset(
-                math.sin(_shake.value * math.pi * 6) * 10 * (1 - _shake.value),
-                0),
-            child: child,
-          ),
-          child: CandyPanel(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_rounded, color: Palette.ink, size: 36),
-                const SizedBox(height: 6),
-                Text('请家长回答', style: FunText.title()),
-                Text(widget.reason, style: FunText.caption()),
-                const SizedBox(height: 12),
-                Text('$_a × $_b = ${_input.isEmpty ? '?' : _input}',
-                    style: FunText.display(size: 32)),
-                const SizedBox(height: 14),
-                GridView.count(
-                  crossAxisCount: 3,
-                  shrinkWrap: true,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.5,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    for (final key in const [
-                      '1',
-                      '2',
-                      '3',
-                      '4',
-                      '5',
-                      '6',
-                      '7',
-                      '8',
-                      '9',
-                      '⌫',
-                      '0',
-                      '✓'
-                    ])
-                      CandyButton(
-                        label: key,
-                        height: 44,
-                        lip: 4,
-                        radius: 14,
-                        fontSize: 22,
-                        candy: key == '✓'
-                            ? Candy.mint
-                            : (key == '⌫' ? Candy.berry : Candy.cream),
-                        onTap: key == '✓' ? _submit : () => _press(key),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => widget.onDone(false),
-                  child:
-                      Text('取消', style: FunText.body(color: Palette.inkSoft)),
-                ),
-              ],
+    // Fixed 340-wide layout, scaled down when the viewport is shorter than the
+    // keypad (landscape tablets / phones) instead of overflowing.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(
+        width: 340,
+        child: Material(
+          type: MaterialType.transparency,
+          child: AnimatedBuilder(
+            animation: _shake,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(
+                  math.sin(_shake.value * math.pi * 6) *
+                      10 *
+                      (1 - _shake.value),
+                  0),
+              child: child,
+            ),
+            child: CandyPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lock_rounded, color: Palette.ink, size: 36),
+                  const SizedBox(height: 6),
+                  Text('请家长回答', style: FunText.title()),
+                  Text(widget.reason, style: FunText.caption()),
+                  const SizedBox(height: 12),
+                  Text('$_a × $_b = ${_input.isEmpty ? '?' : _input}',
+                      style: FunText.display(size: 32)),
+                  const SizedBox(height: 14),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1.5,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      for (final key in const [
+                        '1',
+                        '2',
+                        '3',
+                        '4',
+                        '5',
+                        '6',
+                        '7',
+                        '8',
+                        '9',
+                        '⌫',
+                        '0',
+                        '✓'
+                      ])
+                        CandyButton(
+                          label: key,
+                          height: 44,
+                          lip: 4,
+                          radius: 14,
+                          fontSize: 22,
+                          candy: key == '✓'
+                              ? Candy.mint
+                              : (key == '⌫' ? Candy.berry : Candy.cream),
+                          onTap: key == '✓' ? _submit : () => _press(key),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => widget.onDone(false),
+                    child:
+                        Text('取消', style: FunText.body(color: Palette.inkSoft)),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../audio/sound_service.dart';
+import '../feedback/fx.dart';
+
 enum PlayMode {
   vsAi('人机对战'),
   duo('双人对战');
@@ -125,6 +128,11 @@ abstract class DuelController<S, M> extends ChangeNotifier {
   /// Hook for sounds/effects after any move (human or AI).
   void onMovePlayed(S before, M move, S after) {}
 
+  /// Hook after the AI's move when it is the human's turn again.
+  void onAiReplied() {
+    Fx.play(Sfx.turn);
+  }
+
   /// Minimum time an AI turn takes, so its move reads as a reply.
   Duration get aiPacing => const Duration(milliseconds: 520);
 
@@ -213,6 +221,9 @@ abstract class DuelController<S, M> extends ChangeNotifier {
       return;
     }
     play(move);
+    Future<void>.delayed(const Duration(milliseconds: 380), () {
+      if (!_disposed && canHumanAct) onAiReplied();
+    });
   }
 
   @override
