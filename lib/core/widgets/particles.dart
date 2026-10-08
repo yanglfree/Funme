@@ -148,12 +148,13 @@ class _ParticleLayerState extends State<ParticleLayer>
     with SingleTickerProviderStateMixin {
   final List<_Particle> _live = [];
   final ValueNotifier<int> _frame = ValueNotifier(0);
-  late final Ticker _ticker = createTicker(_tick);
+  late final Ticker _ticker;
   Duration _last = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    _ticker = createTicker(_tick);
     widget.controller.addListener(_onEmit);
   }
 
