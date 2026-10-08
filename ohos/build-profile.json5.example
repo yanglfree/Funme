@@ -1,0 +1,66 @@
+
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "debug",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "<HOME>/your_cert.cer",
+          "keyAlias": "<KEY_ALIAS>",
+          "keyPassword": "<ENCRYPTED_PASSWORD>",
+          "profile": "<HOME>/your_profile.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "<HOME>/your_keystore.p12",
+          "storePassword": "<ENCRYPTED_PASSWORD>"
+        }
+      },
+      {
+        "name": "dis",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "<HOME>/your_cert.cer",
+          "keyAlias": "<KEY_ALIAS>",
+          "keyPassword": "<ENCRYPTED_PASSWORD>",
+          "profile": "<HOME>/your_profile.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "<HOME>/your_keystore.p12",
+          "storePassword": "<ENCRYPTED_PASSWORD>"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "debug",
+        "compatibleSdkVersion": "5.1.0(18)",
+        "runtimeOS": "HarmonyOS",
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "profile"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

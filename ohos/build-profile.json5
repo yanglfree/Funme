@@ -1,11 +1,38 @@
 
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "debug",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/liang/all_debug.cer",
+          "keyAlias": "github",
+          "keyPassword": "0000001878448837756E89716566F2476DE265236C9AFA4E50BE2EE94618ADF2B134113C8FA6BFBA",
+          "profile": "/Users/liang/funme_debugDebug.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/liang/piano.p12",
+          "storePassword": "00000018E40E2E645084D81DE6E6BC9960B96676631584F70C66F5722B6402FF22921FFEB8AD323E"
+        }
+      },
+      {
+        "name": "dis",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/liang/all_dis.cer",
+          "keyAlias": "github",
+          "keyPassword": "00000018AE6AC52EE7627D968757CEF5C4D267F66D410E499B3BD1BFD3873AFDEC92B0CB165B0064",
+          "profile": "/Users/liang/funme_disRelease.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/liang/all_dis.p12",
+          "storePassword": "0000001819DA31010D8EF57908588665646CDE47FD877FD0F9DE7CB3C882A3DF87F81FB99FEF8B4A"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
+        "signingConfig": "debug",
         "compatibleSdkVersion": "5.1.0(18)",
         "runtimeOS": "HarmonyOS",
       }
