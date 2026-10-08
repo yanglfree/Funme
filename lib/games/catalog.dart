@@ -5,6 +5,7 @@ import 'checkers/checkers_page.dart';
 import 'gomoku/gomoku_page.dart';
 import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
+import 'ludo/ludo_page.dart';
 import 'tictactoe/tictactoe_page.dart';
 import 'xiangqi/xiangqi_page.dart';
 
@@ -127,7 +128,29 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const ludo = GameInfo(
+    id: 'ludo',
+    name: '飞行棋',
+    tagline: '掷骰子 起飞啦',
+    category: GameCategory.board,
+    candy: Candy.ocean,
+    icon: GameIcons.ludo,
+    builder: LudoPage.create,
+    players: '2-4人',
+    age: '4岁+',
+    rules: [
+      '点骰子掷出点数，掷到 6（也可以设置成 5 或 6）飞机才能从机场起飞。',
+      '掷到 6 还能再掷一次哦！',
+      '飞机按点数一格一格往前飞；停在和自己同色的格子上，会再往前跳 4 格。',
+      '停在带小飞机图案的格子上，可以沿着虚线一下子飞过去！',
+      '停在别人飞机的格子上，会把它撞回机场。',
+      '飞进自己颜色的跑道，点数刚好才能到达中心，多出来的会往回退。',
+      '所有飞机都到家就赢啦！',
+    ],
+  );
+
   static const all = <GameInfo>[
+    ludo,
     checkers,
     xiangqi,
     junqi,
