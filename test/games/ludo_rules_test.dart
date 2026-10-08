@@ -42,26 +42,77 @@ void main() {
     }
   });
 
-  test('planes leave the yard only on takeoff rolls', () {
+  test('planes leave the yard on 1, 3, 5 and 6 only', () {
     final s = LudoState.initial(2);
-    expect(s.apply(const LudoAction.roll(3)).movablePlanes(), isEmpty);
-    expect(s.apply(const LudoAction.roll(6)).movablePlanes().length, 4);
-    final easy = LudoState.initial(2, takeoff: const {5, 6});
-    expect(easy.apply(const LudoAction.roll(5)).movablePlanes().length, 4);
+    for (final d in [2, 4]) {
+      expect(s.apply(LudoAction.roll(d)).movablePlanes(), isEmpty);
+    }
+    for (final d in [1, 3, 5, 6]) {
+      expect(s.apply(LudoAction.roll(d)).movablePlanes().length, 4);
+    }
   });
 
-  test('rolling a six grants another turn', () {
+  test('takeoff parks on the arrow pad and ends the turn, even on a six', () {
     final s = LudoState.initial(2)
         .apply(const LudoAction.roll(6))
         .apply(const LudoAction.move(0));
+    expect(s.planes[0][0], Ludo.ready);
+    expect(s.turn, 1);
+    expect(s.last!.route.single.kind, LudoStepKind.takeoff);
+    // The next roll walks off the pad: a 1 reaches the start square.
+    final t = withPlanes([
+      [Ludo.ready, -1, -1, -1],
+      [-1, -1, -1, -1]
+    ], dice: 3)
+        .apply(const LudoAction.move(0));
+    expect(t.planes[0][0], 2);
+    expect(t.last!.route.length, 3);
+  });
+
+  test('a five flies straight onto the ring', () {
+    final s = withPlanes([
+      [-1, -1, -1, -1],
+      [-1, -1, -1, -1]
+    ], dice: 5)
+        .apply(const LudoAction.move(0));
+    expect(s.planes[0][0], Ludo.directProgress);
+    expect(s.turn, 1);
+  });
+
+  test('rolling a six grants another turn', () {
+    final s = withPlanes([
+      [3, -1, -1, -1],
+      [-1, -1, -1, -1]
+    ], dice: 6)
+        .apply(const LudoAction.move(0));
     expect(s.turn, 0);
-    expect(s.planes[0][0], 0);
+    expect(s.sixes, 1);
     final t = withPlanes([
       [3, -1, -1, -1],
       [-1, -1, -1, -1]
     ], dice: 2)
         .apply(const LudoAction.move(0));
     expect(t.turn, 1);
+  });
+
+  test('three sixes in a row send the furthest plane home and pass the turn',
+      () {
+    var s = withPlanes([
+      [10, 30, Ludo.goal, -1],
+      [-1, -1, -1, -1]
+    ]);
+    for (var i = 0; i < 2; i++) {
+      s = s.apply(const LudoAction.roll(6)).apply(const LudoAction.move(0));
+    }
+    expect(s.turn, 0);
+    expect(s.sixes, 2);
+    s = s.apply(const LudoAction.roll(6));
+    expect(s.dice, isNull);
+    expect(s.turn, 1);
+    expect(s.sixes, 0);
+    expect(s.planes[0][1], Ludo.yard);
+    expect(s.planes[0][2], Ludo.goal);
+    expect(s.last!.recalled, [(0, 1, 30)]);
   });
 
   test('landing on own color jumps four, the fly square crosses the board', () {

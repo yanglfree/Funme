@@ -57,7 +57,7 @@ class _Timeline {
 
   int get totalMs =>
       math.max(routeMs, 1) +
-      (info.captured.isEmpty ? 0 : _captureMs) +
+      (info.captured.isEmpty && info.recalled.isEmpty ? 0 : _captureMs) +
       (endsHome ? _homeFxMs : 0);
 }
 
@@ -89,7 +89,6 @@ class LudoController extends PartyController<LudoState, LudoAction> {
   LudoState initialState(PartySetup setup) => LudoState.initial(
         setup.seats.length,
         planes: int.tryParse(setup.extra['planes'] ?? '') ?? 4,
-        takeoff: setup.extra['takeoff'] == '56' ? const {5, 6} : const {6},
       );
 
   @override
@@ -151,6 +150,15 @@ class LudoController extends PartyController<LudoState, LudoAction> {
   void onMovePlayed(LudoState before, LudoAction move, LudoState after) {
     if (move.isRoll) {
       Fx.play(Sfx.dice, buzz: Buzz.light);
+      final penalty = after.last;
+      if (after.dice == null &&
+          penalty != null &&
+          !identical(penalty, before.last)) {
+        Timer(const Duration(milliseconds: 800), () {
+          Fx.play(Sfx.crash, buzz: Buzz.heavy);
+          flash.show('三连六！罚回机库', candy: Candy.cherry);
+        });
+      }
       return;
     }
     if (move.isPass) {
@@ -265,14 +273,6 @@ class _LudoPageState extends State<LudoPage> {
             SetupChoice('4', '4 架（标准）', candy: Candy.orange),
           ],
         ),
-        const SetupGroup(
-          key: 'takeoff',
-          title: '起飞规则',
-          choices: [
-            SetupChoice('56', '掷 5 或 6 起飞', candy: Candy.sun),
-            SetupChoice('6', '只有 6 起飞', candy: Candy.grape),
-          ],
-        ),
       ],
       toSetup: (values) => PartySetup.fromMap(values),
       board: ConstrainedBox(
@@ -342,7 +342,7 @@ class _DiceBar extends StatelessWidget {
     } else if (s.dice == null) {
       prompt = '点一下骰子！';
     } else if (s.movablePlanes().isEmpty) {
-      prompt = s.takeoff.contains(5) ? '要掷到 5 或 6 才能起飞哦' : '要掷到 6 才能起飞哦';
+      prompt = '要掷到 1、3、5 或 6 才能起飞哦';
     } else {
       prompt = '点一架发光的飞机';
     }
@@ -619,6 +619,10 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
       final (x, y) = _yardSlot(pos, plane);
       return Offset(x * _cell, y * _cell);
     }
+    if (progress == Ludo.ready) {
+      final (x, y) = Ludo.readySpot(pos);
+      return Offset(x * _cell, y * _cell);
+    }
     if (progress == Ludo.goal) {
       const dirs = [(0.0, 1.05), (-1.05, 0.0), (0.0, -1.05), (1.05, 0.0)];
       final (dx, dy) = dirs[pos];
@@ -633,6 +637,11 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
 
   double _heading(int seat, int progress) {
     final pos = _c.state.positions[seat];
+    if (progress == Ludo.ready) {
+      final (rx, ry) = Ludo.readySpot(pos);
+      final (sx, sy) = Ludo.cell(pos, 0);
+      return math.atan2(sy - ry, sx - rx) + math.pi / 2;
+    }
     if (progress < 0) return math.pi / 4 + pos * math.pi / 2;
     if (progress >= Ludo.goal) return _parkedHeading(pos);
     final (ax, ay) = Ludo.cell(pos, progress);
@@ -831,25 +840,8 @@ class _LudoBoardPainter extends CustomPainter {
 
   /// The black arrow badge tucked into the empty corner of a start square.
   void _paintStartMarker(Canvas canvas, double u, int pos) {
-    final shape = Ludo.trackShapes[Ludo.starts[pos]];
-    var minX = double.infinity, minY = double.infinity;
-    var maxX = -double.infinity, maxY = -double.infinity;
-    for (final (x, y) in shape) {
-      minX = math.min(minX, x);
-      maxX = math.max(maxX, x);
-      minY = math.min(minY, y);
-      maxY = math.max(maxY, y);
-    }
-    (double, double)? missing;
-    for (final c in [(minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)]) {
-      if (!shape.contains(c)) missing = c;
-    }
-    if (missing == null) return;
-    final (mx, my) = missing;
-    final center = Offset(
-      mx * u + (mx == minX ? 1 : -1) * u * 0.55,
-      my * u + (my == minY ? 1 : -1) * u * 0.55,
-    );
+    final (rx, ry) = Ludo.readySpot(pos);
+    final center = Offset(rx * u, ry * u);
     final (ax, ay) = Ludo.cell(pos, 0);
     final (bx, by) = Ludo.cell(pos, 1);
     final dir = (bx - ax).abs() > (by - ay).abs()
@@ -965,6 +957,10 @@ class _PlanesPainter extends CustomPainter {
         hitAt[s * 10 + k] = tl.ends[m.captureLegs[i]];
         hitFrom[s * 10 + k] = p;
       }
+      for (final (s, k, p) in m.recalled) {
+        hitAt[s * 10 + k] = 0;
+        hitFrom[s * 10 + k] = p;
+      }
     }
 
     // Count planes per spot to fan out stacks.
@@ -1014,6 +1010,9 @@ class _PlanesPainter extends CustomPainter {
     for (var i = 0; i < m.captured.length; i++) {
       final (seat, k, from) = m.captured[i];
       _knockedHome(canvas, seat, k, from, elapsed - tl.ends[m.captureLegs[i]]);
+    }
+    for (final (seat, k, from) in m.recalled) {
+      _knockedHome(canvas, seat, k, from, elapsed);
     }
   }
 

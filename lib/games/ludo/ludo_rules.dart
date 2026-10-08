@@ -11,6 +11,17 @@ import 'dart:math' as math;
 abstract final class Ludo {
   static const goal = 55;
   static const yard = -1;
+
+  /// Parked on the arrow pad beside the start square, waiting for a roll.
+  static const ready = -2;
+
+  /// Rolls that bring a plane out of the yard onto the arrow pad.
+  static const takeoffRolls = {1, 3, 6};
+
+  /// This roll flies a plane straight onto the ring at [directProgress]
+  /// (the corner square on the yard's other side).
+  static const directRoll = 5;
+  static const directProgress = 7;
   static const lastTrack = 49;
   static const laneStart = 50;
 
@@ -87,6 +98,34 @@ abstract final class Ludo {
   /// Airfield circles inside a yard, relative to its top-left corner.
   static const yardSlots = [(1.0, 1.0), (3.0, 1.0), (1.0, 3.0), (3.0, 3.0)];
 
+  /// Where a plane waits after takeoff: the empty corner of the start square,
+  /// marked with the black arrow badge.
+  static (double, double) readySpot(int position) {
+    final shape = trackShapes[starts[position]];
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity;
+    for (final (x, y) in shape) {
+      minX = math.min(minX, x);
+      maxX = math.max(maxX, x);
+      minY = math.min(minY, y);
+      maxY = math.max(maxY, y);
+    }
+    for (final (cx, cy) in [
+      (minX, minY),
+      (maxX, minY),
+      (minX, maxY),
+      (maxX, maxY)
+    ]) {
+      if (!shape.contains((cx, cy))) {
+        return (
+          cx + (cx == minX ? 0.55 : -0.55),
+          cy + (cy == minY ? 0.55 : -0.55)
+        );
+      }
+    }
+    return _centroid(shape);
+  }
+
   /// Ring square color = the board position that owns it. Colors cycle along
   /// the ring, so a start square wears the previous seat's color.
   static int trackColor(int trackIndex) => (trackIndex + 3) % 4;
@@ -128,6 +167,7 @@ class LudoMoveInfo {
     required this.captured,
     required this.captureLegs,
     required this.bonus,
+    this.recalled = const [],
   });
 
   final int seat;
@@ -142,6 +182,10 @@ class LudoMoveInfo {
 
   /// For each [captured] entry, the route leg whose landing caused it.
   final List<int> captureLegs;
+
+  /// Planes sent back to the yard as a penalty (three sixes in a row):
+  /// (seat, plane, progress before).
+  final List<(int, int, int)> recalled;
 
   /// Jump / fly that happened during the move (for sounds and banners).
   final LudoStepKind? bonus;
@@ -169,18 +213,16 @@ class LudoState {
     required this.turn,
     this.dice,
     this.lastRoll,
-    this.takeoff = const {6},
+    this.sixes = 0,
     this.last,
   });
 
-  factory LudoState.initial(int players,
-      {int planes = 4, Set<int> takeoff = const {6}}) {
+  factory LudoState.initial(int players, {int planes = 4}) {
     final positions = Ludo.positionsFor(players);
     return LudoState(
       positions: positions,
       planes: [for (final _ in positions) List.filled(planes, Ludo.yard)],
       turn: 0,
-      takeoff: takeoff,
     );
   }
 
@@ -197,8 +239,8 @@ class LudoState {
   /// The most recent roll (kept after use so the die keeps showing it).
   final int? lastRoll;
 
-  /// Rolls that let a plane leave the yard.
-  final Set<int> takeoff;
+  /// Sixes this seat has already used in a row; the third one is a penalty.
+  final int sixes;
   final LudoMoveInfo? last;
 
   List<int> movablePlanes() {
@@ -209,7 +251,11 @@ class LudoState {
     for (var k = 0; k < mine.length; k++) {
       final p = mine[k];
       if (p == Ludo.goal) continue;
-      if (p == Ludo.yard && !takeoff.contains(d)) continue;
+      if (p == Ludo.yard &&
+          !Ludo.takeoffRolls.contains(d) &&
+          d != Ludo.directRoll) {
+        continue;
+      }
       out.add(k);
     }
     return out;
@@ -224,13 +270,14 @@ class LudoState {
 
   LudoState apply(LudoAction a) {
     if (a.isRoll) {
+      if (a.value == 6 && sixes >= 2) return _threeSixes();
       return LudoState(
         positions: positions,
         planes: planes,
         turn: turn,
         dice: a.value,
         lastRoll: a.value,
-        takeoff: takeoff,
+        sixes: sixes,
         last: last,
       );
     }
@@ -240,7 +287,6 @@ class LudoState {
         planes: planes,
         turn: (turn + 1) % positions.length,
         lastRoll: lastRoll,
-        takeoff: takeoff,
       );
     }
     final d = dice!;
@@ -282,11 +328,20 @@ class LudoState {
 
     var p = next[turn][k];
     final fromProgress = p;
-    if (p == Ludo.yard) {
-      p = 0;
-      add(p, LudoStepKind.takeoff);
-      captureAt(p);
+    final tookOff = p == Ludo.yard;
+    if (tookOff) {
+      if (d == Ludo.directRoll) {
+        p = Ludo.directProgress;
+        add(p, LudoStepKind.takeoff);
+        captureAt(p);
+      } else {
+        p = Ludo.ready;
+        final (rx, ry) = Ludo.readySpot(pos);
+        route.add(LudoStep(rx, ry, LudoStepKind.takeoff));
+      }
     } else {
+      // The arrow pad sits one step before the start square.
+      if (p == Ludo.ready) p = -1;
       final target = p + d;
       if (target <= Ludo.goal) {
         for (var s = p + 1; s <= target; s++) {
@@ -327,13 +382,14 @@ class LudoState {
       }
     }
     next[turn][k] = p;
-    final again = d == 6 && winnerOf(next) == null;
+    // A six rolls again, except when it was spent on taking off.
+    final again = d == 6 && !tookOff && winnerOf(next) == null;
     return LudoState(
       positions: positions,
       planes: next,
       turn: again ? turn : (turn + 1) % positions.length,
       lastRoll: d,
-      takeoff: takeoff,
+      sixes: again ? sixes + 1 : 0,
       last: LudoMoveInfo(
         seat: turn,
         plane: k,
@@ -342,6 +398,42 @@ class LudoState {
         captured: captured,
         captureLegs: captureLegs,
         bonus: bonus,
+      ),
+    );
+  }
+
+  /// Third six in a row: the roll is void, the seat's furthest plane goes back
+  /// to the yard and the turn passes.
+  LudoState _threeSixes() {
+    final next = [for (final p in planes) List<int>.of(p)];
+    final recalled = <(int, int, int)>[];
+    var best = -1;
+    var bestProgress = Ludo.yard;
+    for (var k = 0; k < next[turn].length; k++) {
+      final p = next[turn][k];
+      if (p > bestProgress && p != Ludo.goal) {
+        best = k;
+        bestProgress = p;
+      }
+    }
+    if (best >= 0) {
+      next[turn][best] = Ludo.yard;
+      recalled.add((turn, best, bestProgress));
+    }
+    return LudoState(
+      positions: positions,
+      planes: next,
+      turn: (turn + 1) % positions.length,
+      lastRoll: 6,
+      last: LudoMoveInfo(
+        seat: turn,
+        plane: best < 0 ? 0 : best,
+        fromProgress: bestProgress,
+        route: const [],
+        captured: const [],
+        captureLegs: const [],
+        bonus: null,
+        recalled: recalled,
       ),
     );
   }
@@ -381,7 +473,7 @@ abstract final class LudoAi {
     if (before == Ludo.yard) {
       v += 45;
     } else {
-      v += (p - before).toDouble();
+      v += (p - (before == Ludo.ready ? -1 : before)).toDouble();
     }
     if (p == Ludo.goal) v += 100;
     if (p > Ludo.lastTrack && before <= Ludo.lastTrack) v += 25;
