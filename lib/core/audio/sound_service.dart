@@ -67,7 +67,11 @@ class SoundService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     AppStore.instance.addListener(_syncMusic);
     try {
-      await AudioPlayer.global.setAudioContext(
+      // Never awaited: the ohos plugin applies the context but never replies
+      // to this call, so awaiting it would hang init forever and leave every
+      // cue silent.
+      unawaited(AudioPlayer.global
+          .setAudioContext(
         const AudioContext(
           iOS: AudioContextIOS(
             category: AVAudioSessionCategory.ambient,
@@ -89,7 +93,10 @@ class SoundService with WidgetsBindingObserver {
             audioFocus: AndroidAudioFocus.none,
           ),
         ),
-      );
+      )
+          .catchError((Object error) {
+        debugPrint('SoundService: audio context unavailable: $error');
+      }));
     } catch (error) {
       debugPrint('SoundService: audio context unavailable: $error');
     }
