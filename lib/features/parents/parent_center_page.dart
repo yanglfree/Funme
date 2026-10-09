@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/feedback/fx.dart';
+import '../../games/catalog.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/theme/palette.dart';
 import '../../core/widgets/candy_button.dart';
@@ -74,6 +75,10 @@ class ParentCenterPage extends StatelessWidget {
                   ],
                 ),
                 _Section(
+                  title: '游戏时长',
+                  children: [_PlayTimeSummary(store: store)],
+                ),
+                _Section(
                   title: '隐私与安全',
                   children: [
                     for (final line in const [
@@ -136,7 +141,7 @@ class ParentCenterPage extends StatelessWidget {
       builder: (context) => AlertDialog(
         backgroundColor: Palette.cream,
         title: Text('清除全部记录？', style: FunText.title()),
-        content: Text('星星和最佳成绩都会被清空，无法恢复。', style: FunText.body(size: 15)),
+        content: Text('星星、最佳成绩和游戏时长都会被清空，无法恢复。', style: FunText.body(size: 15)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -150,6 +155,103 @@ class ParentCenterPage extends StatelessWidget {
       ),
     );
     if (ok == true) await AppStore.instance.clearRecords();
+  }
+}
+
+String formatPlayTime(int seconds) {
+  if (seconds < 60) return seconds == 0 ? '0 分钟' : '不到 1 分钟';
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes 分钟';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  return m == 0 ? '$h 小时' : '$h 小时 $m 分钟';
+}
+
+class _PlayTimeSummary extends StatelessWidget {
+  const _PlayTimeSummary({required this.store});
+
+  final AppStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [
+      for (final g in GameCatalog.all)
+        (
+          info: g,
+          today: store.playSeconds(gameId: g.id),
+          week: store.playSeconds(gameId: g.id, days: 7),
+          total: store.totalPlaySeconds(g.id),
+        ),
+    ]..sort((a, b) => b.total.compareTo(a.total));
+    final maxTotal = rows.first.total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            _Stat(label: '今天', seconds: store.playSeconds()),
+            _Stat(label: '近 7 天', seconds: store.playSeconds(days: 7)),
+            _Stat(label: '累计', seconds: store.totalPlaySeconds()),
+          ],
+        ),
+        const SizedBox(height: 12),
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(r.info.name, style: FunText.body(size: 15)),
+                    ),
+                    Text(
+                      '今天 ${formatPlayTime(r.today)} · 累计 ${formatPlayTime(r.total)}',
+                      style: FunText.caption(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: maxTotal == 0 ? 0 : r.total / maxTotal,
+                    minHeight: 8,
+                    backgroundColor: Palette.ink.withOpacity(0.1),
+                    valueColor: AlwaysStoppedAnimation(r.info.candy.face),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 6),
+        Text('仅统计游戏页面内的前台时间，只保存在本机。', style: FunText.caption()),
+      ],
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.seconds});
+
+  final String label;
+  final int seconds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child:
+                Text(formatPlayTime(seconds), style: FunText.title(size: 18)),
+          ),
+          Text(label, style: FunText.caption()),
+        ],
+      ),
+    );
   }
 }
 

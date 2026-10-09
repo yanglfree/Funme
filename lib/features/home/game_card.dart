@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/fun_route.dart';
 import '../../core/art/shapes.dart';
 import '../../core/game/game_info.dart';
+import '../../core/game/play_time_tracker.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/theme/palette.dart';
 import '../../core/widgets/candy_panel.dart';
@@ -31,7 +32,12 @@ class GameCard extends StatelessWidget {
     final record = AppStore.instance.record(info.id);
     return Pressable(
       pressedScale: 0.94,
-      onTap: () => Navigator.of(context).push(FunRoute(builder: info.builder)),
+      onTap: () => Navigator.of(context).push(
+        FunRoute(
+          builder: info.builder,
+          settings: RouteSettings(name: PlayTimeTracker.routeName(info.id)),
+        ),
+      ),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),

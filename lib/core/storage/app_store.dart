@@ -56,6 +56,8 @@ class AppStore extends ChangeNotifier {
     _hapticsOn = _prefs.getBool(_kHaptics) ?? true;
     _volume = (_prefs.getDouble(_kVolume) ?? 1.0).clamp(0.0, 1.0);
     _playLimitMinutes = _prefs.getInt(_kPlayLimit) ?? 0;
+    _days = _decodeNested(_prefs.getString(_kPlayTime));
+    _totals = _decodeFlat(_prefs.getString(_kPlayTimeTotal));
     for (final key in _prefs.getKeys()) {
       if (!key.startsWith(_kRecordPrefix)) continue;
       final raw = _prefs.getString(key);
@@ -74,6 +76,9 @@ class AppStore extends ChangeNotifier {
   static const _kHaptics = 'settings.haptics';
   static const _kVolume = 'settings.volume';
   static const _kPlayLimit = 'settings.playLimitMinutes';
+  static const _kPlayTime = 'playtime.days';
+  static const _kPlayTimeTotal = 'playtime.total';
+  static const _keepDays = 14;
   static const _kRecordPrefix = 'record.';
   static const _kSetupPrefix = 'setup.';
 
@@ -94,6 +99,12 @@ class AppStore extends ChangeNotifier {
 
   final SharedPreferences _prefs;
   final Map<String, GameRecord> _records = {};
+
+  /// Seconds played per local day (`yyyy-mm-dd`) per game id, last 14 days.
+  late Map<String, Map<String, int>> _days;
+
+  /// Seconds played per game id since the app was installed or cleared.
+  late Map<String, int> _totals;
 
   late bool _soundOn;
   late bool _musicOn;
@@ -168,6 +179,68 @@ class AppStore extends ChangeNotifier {
     );
   }
 
+  static Map<String, int> _decodeFlat(String? raw) {
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map<String, dynamic>)
+          .map((k, v) => MapEntry(k, (v as num).toInt()));
+    } on Object {
+      return {};
+    }
+  }
+
+  static Map<String, Map<String, int>> _decodeNested(String? raw) {
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map<String, dynamic>).map(
+        (day, games) => MapEntry(
+          day,
+          (games as Map<String, dynamic>)
+              .map((k, v) => MapEntry(k, (v as num).toInt())),
+        ),
+      );
+    } on Object {
+      return {};
+    }
+  }
+
+  static String dayKey(DateTime t) => '${t.year.toString().padLeft(4, '0')}-'
+      '${t.month.toString().padLeft(2, '0')}-'
+      '${t.day.toString().padLeft(2, '0')}';
+
+  /// Adds foreground play time for [gameId] to today's bucket and the total.
+  void addPlaySeconds(String gameId, int seconds, {DateTime? now}) {
+    if (seconds <= 0) return;
+    final at = now ?? DateTime.now();
+    final today = _days.putIfAbsent(dayKey(at), () => {});
+    today[gameId] = (today[gameId] ?? 0) + seconds;
+    _totals[gameId] = (_totals[gameId] ?? 0) + seconds;
+    final cutoff = dayKey(at.subtract(const Duration(days: _keepDays)));
+    _days.removeWhere((day, _) => day.compareTo(cutoff) < 0);
+    _prefs.setString(_kPlayTime, jsonEncode(_days));
+    _prefs.setString(_kPlayTimeTotal, jsonEncode(_totals));
+    notifyListeners();
+  }
+
+  /// Seconds played in [gameId] over the last [days] days including today;
+  /// a null [gameId] sums every game.
+  int playSeconds({String? gameId, int days = 1, DateTime? now}) {
+    final at = now ?? DateTime.now();
+    var sum = 0;
+    for (var i = 0; i < days; i++) {
+      final games = _days[dayKey(at.subtract(Duration(days: i)))];
+      if (games == null) continue;
+      sum += gameId == null
+          ? games.values.fold(0, (a, b) => a + b)
+          : games[gameId] ?? 0;
+    }
+    return sum;
+  }
+
+  int totalPlaySeconds([String? gameId]) => gameId == null
+      ? _totals.values.fold(0, (a, b) => a + b)
+      : _totals[gameId] ?? 0;
+
   Map<String, dynamic>? setup(String gameId) {
     final raw = _prefs.getString('$_kSetupPrefix$gameId');
     if (raw == null) return null;
@@ -192,6 +265,10 @@ class AppStore extends ChangeNotifier {
       await _prefs.remove(key);
     }
     _records.clear();
+    _days = {};
+    _totals = {};
+    await _prefs.remove(_kPlayTime);
+    await _prefs.remove(_kPlayTimeTotal);
     notifyListeners();
   }
 }

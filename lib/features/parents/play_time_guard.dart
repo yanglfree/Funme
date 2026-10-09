@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/art/mascot.dart';
+import '../../core/game/play_time_tracker.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/theme/palette.dart';
 import '../../core/widgets/candy_button.dart';
@@ -46,6 +47,7 @@ class _PlayTimeGuardState extends State<PlayTimeGuard>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    PlayTimeTracker.instance.setForeground(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       _timer ??= Timer.periodic(_tick, (_) => _onTick());
     } else {
@@ -55,6 +57,8 @@ class _PlayTimeGuardState extends State<PlayTimeGuard>
   }
 
   void _onTick() {
+    // Persist in-flight play time so a killed app loses at most one tick.
+    PlayTimeTracker.instance.flush();
     final limit = AppStore.instance.playLimitMinutes;
     if (limit == 0 || _resting) return;
     _played += _tick;

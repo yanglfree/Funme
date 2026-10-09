@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/game/play_time_tracker.dart';
 import '../core/layout/adaptive_scale.dart';
 import '../core/theme/fun_theme.dart';
 import '../core/widgets/volume_overlay.dart';
@@ -31,6 +32,7 @@ class FunmeApp extends StatelessWidget {
           ),
         );
       },
+      navigatorObservers: [PlayTimeObserver()],
       home: const HomePage(),
     );
   }
