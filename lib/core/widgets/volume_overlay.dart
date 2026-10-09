@@ -54,14 +54,14 @@ class _VolumeOverlayState extends State<VolumeOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top + 14;
+    final pad = MediaQuery.paddingOf(context);
+    final top = pad.top + 10;
     return Stack(
       children: [
         widget.child,
         Positioned(
           top: top,
-          left: 0,
-          right: 0,
+          right: math.max(pad.right, 0) + 12,
           child: IgnorePointer(
             child: AnimatedBuilder(
               animation: Listenable.merge([_pop, AppStore.instance]),
@@ -71,12 +71,11 @@ class _VolumeOverlayState extends State<VolumeOverlay>
                 return Opacity(
                   opacity: _pop.value.clamp(0.0, 1.0),
                   child: Transform.translate(
-                    offset: Offset(0, (1 - t) * -36),
+                    offset: Offset((1 - t) * 48, 0),
                     child: Transform.scale(
                       scale: 0.7 + 0.3 * t,
-                      child: Center(
-                        child: _VolumePanel(volume: AppStore.instance.volume),
-                      ),
+                      alignment: Alignment.topRight,
+                      child: _VolumePanel(volume: AppStore.instance.volume),
                     ),
                   ),
                 );
@@ -107,34 +106,34 @@ class _VolumePanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Palette.cream,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Palette.ink, width: 3),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Palette.ink, width: 2.5),
         boxShadow: const [
-          BoxShadow(color: Palette.ink, offset: Offset(0, 6)),
+          BoxShadow(color: Palette.ink, offset: Offset(0, 4)),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox.square(
-              dimension: 46,
+              dimension: 30,
               child: CustomPaint(painter: _SpeakerPainter(level, candy)),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             SizedBox(
-              width: 220,
-              height: 34,
+              width: 124,
+              height: 22,
               child: CustomPaint(painter: _NotchesPainter(level, candy)),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             SizedBox(
-              width: 44,
+              width: 30,
               child: Text(
                 '${level * 10}',
                 textAlign: TextAlign.center,
-                style: FunText.title(size: 24, color: Palette.ink),
+                style: FunText.title(size: 16, color: Palette.ink),
               ),
             ),
           ],
@@ -162,7 +161,7 @@ class _SpeakerPainter extends CustomPainter {
       ..lineTo(s * 0.12, s * 0.62)
       ..close();
     canvas.drawPath(body, Paint()..color = candy.face);
-    canvas.drawPath(body, inkStroke(3)..strokeJoin = StrokeJoin.round);
+    canvas.drawPath(body, inkStroke(2.4)..strokeJoin = StrokeJoin.round);
 
     final waves = level == 0 ? 0 : (level / 4).ceil().clamp(1, 3);
     for (var i = 1; i <= waves; i++) {
@@ -172,7 +171,7 @@ class _SpeakerPainter extends CustomPainter {
         -math.pi / 3.2,
         math.pi / 1.6,
         false,
-        inkStroke(3.4)..strokeCap = StrokeCap.round,
+        inkStroke(2.6)..strokeCap = StrokeCap.round,
       );
     }
     if (level == 0) {
@@ -199,7 +198,7 @@ class _NotchesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const n = _VolumePanel._notches;
-    const gap = 5.0;
+    const gap = 3.0;
     final w = (size.width - gap * (n - 1)) / n;
     for (var i = 0; i < n; i++) {
       final on = i < level;
@@ -207,12 +206,12 @@ class _NotchesPainter extends CustomPainter {
       final h = size.height * (0.45 + 0.55 * (i + 1) / n);
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(i * (w + gap), size.height - h, w, h),
-        const Radius.circular(5),
+        const Radius.circular(3),
       );
       canvas.drawRRect(
           rect, Paint()..color = on ? candy.face : const Color(0xFFE9E1D2));
       canvas.drawRRect(rect,
-          inkStroke(2.4, color: on ? Palette.ink : const Color(0xFFCFC5B1)));
+          inkStroke(1.8, color: on ? Palette.ink : const Color(0xFFCFC5B1)));
       if (on) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
