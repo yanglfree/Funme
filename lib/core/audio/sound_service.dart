@@ -140,7 +140,8 @@ class SoundService with WidgetsBindingObserver {
 
   Future<void> _start(AudioPlayer player, Sfx cue, double volume) async {
     try {
-      await player.play(AssetSource(cue.asset), volume: volume);
+      await player.play(AssetSource(cue.asset),
+          volume: volume * AppStore.instance.volume);
     } catch (error) {
       debugPrint('SoundService: failed to play ${cue.name}: $error');
       await _replace(player);
@@ -164,6 +165,7 @@ class SoundService with WidgetsBindingObserver {
 
   void _syncMusic() {
     if (!_ready) return;
+    if (_musicPlaying) unawaited(_applyMusicVolume());
     final want = AppStore.instance.musicOn && _foreground;
     if (want == _musicPlaying) return;
     _musicPlaying = want;
@@ -174,9 +176,18 @@ class SoundService with WidgetsBindingObserver {
     try {
       final music = _music ??= AudioPlayer();
       await music.setReleaseMode(ReleaseMode.loop);
-      await music.play(AssetSource('audio/bgm.wav'), volume: _musicVolume);
+      await music.play(AssetSource('audio/bgm.wav'),
+          volume: _musicVolume * AppStore.instance.volume);
     } catch (error) {
       debugPrint('SoundService: music failed: $error');
+    }
+  }
+
+  Future<void> _applyMusicVolume() async {
+    try {
+      await _music?.setVolume(_musicVolume * AppStore.instance.volume);
+    } catch (error) {
+      debugPrint('SoundService: music volume failed: $error');
     }
   }
 

@@ -54,6 +54,7 @@ class AppStore extends ChangeNotifier {
     _soundOn = _prefs.getBool(_kSound) ?? true;
     _musicOn = _prefs.getBool(_kMusic) ?? true;
     _hapticsOn = _prefs.getBool(_kHaptics) ?? true;
+    _volume = (_prefs.getDouble(_kVolume) ?? 1.0).clamp(0.0, 1.0);
     _playLimitMinutes = _prefs.getInt(_kPlayLimit) ?? 0;
     for (final key in _prefs.getKeys()) {
       if (!key.startsWith(_kRecordPrefix)) continue;
@@ -71,6 +72,7 @@ class AppStore extends ChangeNotifier {
   static const _kSound = 'settings.sound';
   static const _kMusic = 'settings.music';
   static const _kHaptics = 'settings.haptics';
+  static const _kVolume = 'settings.volume';
   static const _kPlayLimit = 'settings.playLimitMinutes';
   static const _kRecordPrefix = 'record.';
   static const _kSetupPrefix = 'setup.';
@@ -96,11 +98,15 @@ class AppStore extends ChangeNotifier {
   late bool _soundOn;
   late bool _musicOn;
   late bool _hapticsOn;
+  late double _volume;
   late int _playLimitMinutes;
 
   bool get soundOn => _soundOn;
   bool get musicOn => _musicOn;
   bool get hapticsOn => _hapticsOn;
+
+  /// App volume 0–1 applied on top of the system volume to cues and music.
+  double get volume => _volume;
 
   /// 0 disables the eye-rest reminder.
   int get playLimitMinutes => _playLimitMinutes;
@@ -109,6 +115,14 @@ class AppStore extends ChangeNotifier {
   set musicOn(bool value) => _setBool(_kMusic, value, () => _musicOn = value);
   set hapticsOn(bool value) =>
       _setBool(_kHaptics, value, () => _hapticsOn = value);
+
+  set volume(double value) {
+    final next = value.clamp(0.0, 1.0);
+    if (next == _volume) return;
+    _volume = next;
+    _prefs.setDouble(_kVolume, next);
+    notifyListeners();
+  }
 
   set playLimitMinutes(int value) {
     _playLimitMinutes = value;

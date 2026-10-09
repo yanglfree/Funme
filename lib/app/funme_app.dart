@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/layout/adaptive_scale.dart';
 import '../core/theme/fun_theme.dart';
+import '../core/widgets/volume_overlay.dart';
 import '../features/home/home_page.dart';
 import '../features/parents/play_time_guard.dart';
 
@@ -24,7 +25,9 @@ class FunmeApp extends StatelessWidget {
                 .clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15),
           ),
           child: AdaptiveScale(
-            child: PlayTimeGuard(child: child ?? const SizedBox.shrink()),
+            child: VolumeOverlay(
+              child: PlayTimeGuard(child: child ?? const SizedBox.shrink()),
+            ),
           ),
         );
       },
