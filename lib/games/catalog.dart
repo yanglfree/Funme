@@ -8,6 +8,7 @@ import 'jungle/jungle_page.dart';
 import 'junqi/junqi_page.dart';
 import 'ludo/ludo_page.dart';
 import 'merge2048/merge2048_page.dart';
+import 'pusher/pusher_page.dart';
 import 'reversi/reversi_page.dart';
 import 'snake/snake_page.dart';
 import 'sudoku/sudoku_page.dart';
@@ -249,6 +250,25 @@ abstract final class GameCatalog {
     ],
   );
 
+  static const pusher = GameInfo(
+    id: 'pusher',
+    name: '推币机',
+    tagline: '投币推下大奖',
+    category: GameCategory.arcade,
+    candy: Candy.berry,
+    icon: GameIcons.pusher,
+    builder: PusherPage.create,
+    players: '1人',
+    age: '4岁+',
+    rules: [
+      '在棋盘上拖动手指选好位置，松手（或点“投币”）就会掉下一枚硬币。',
+      '硬币落在蓝色推板上，推板来回滑动，会把前面的硬币一点点推向边缘。',
+      '硬币被推下边缘掉进托盘，就是你赢到的！赢到的硬币还能接着投。',
+      '金币值 3 个币，粉色宝石值 5 个币，快把它们推下来吧！',
+      '手上的硬币用完、或者 90 秒时间到，游戏就结束啦。',
+    ],
+  );
+
   static const all = <GameInfo>[
     ludo,
     checkers,
@@ -262,6 +282,7 @@ abstract final class GameCatalog {
     merge2048,
     sudoku,
     snake,
+    pusher,
   ];
 }
 

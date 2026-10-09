@@ -567,6 +567,33 @@ abstract final class GameIcons {
         _fill(Palette.grass));
   }
 
+  static void pusher(Canvas canvas, Size size, double t) {
+    final s = size.width;
+    final shove = (_wave(t) * 0.5 + 0.5) * s * 0.06;
+    _roundRect(canvas, Rect.fromLTWH(s * 0.12, s * 0.14, s * 0.76, s * 0.72),
+        s * 0.1, const Color(0xFFFFF1C9), s * 0.03);
+    _roundRect(
+        canvas,
+        Rect.fromLTWH(s * 0.12, s * 0.14, s * 0.76, s * 0.3 + shove),
+        s * 0.1,
+        Candy.ocean.face,
+        s * 0.03);
+    for (final p in const [
+      (0.3, 0.6),
+      (0.5, 0.56),
+      (0.7, 0.62),
+      (0.4, 0.74),
+      (0.62, 0.76)
+    ]) {
+      final c = Offset(s * p.$1, s * p.$2 + shove * 0.6);
+      canvas.drawCircle(c, s * 0.085, _fill(Colors.black.withOpacity(0.15)));
+      canvas.drawCircle(c, s * 0.08, _fill(const Color(0xFFD7DEEC)));
+      canvas.drawCircle(c, s * 0.08, inkStroke(s * 0.02));
+    }
+    _disc(canvas, Offset(s * 0.5, s * 0.28 + shove), s * 0.08, Candy.sun.face,
+        outline: 0.1);
+  }
+
   static void whack(Canvas canvas, Size size, double t) {
     final s = size.width;
     final hole = Rect.fromCenter(

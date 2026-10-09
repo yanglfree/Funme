@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:funme/core/storage/app_store.dart';
 import 'package:funme/games/merge2048/merge2048_page.dart';
+import 'package:funme/games/pusher/pusher_page.dart';
 import 'package:funme/games/sudoku/sudoku_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -54,5 +55,19 @@ void main() {
     expect(find.text('提示 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('coin pusher drops coins by tap, drag and keyboard',
+      (tester) async {
+    await _open(tester, const PusherPage());
+    await tester.tap(find.byType(AspectRatio).first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.drag(find.byType(AspectRatio).first, const Offset(60, 0));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.textContaining('手上'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
