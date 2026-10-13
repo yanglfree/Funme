@@ -38,7 +38,11 @@ enum Sfx {
   undo,
   hint,
   unlock,
-  turn;
+  turn,
+  coinSlot,
+  coinContact,
+  coinTray,
+  pusherMotor;
 
   String get asset => 'audio/$name.wav';
 }

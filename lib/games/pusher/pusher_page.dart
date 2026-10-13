@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/art/shapes.dart';
 import '../../core/audio/sound_service.dart';
 import '../../core/feedback/fx.dart';
 import '../../core/storage/app_store.dart';
 import '../../core/theme/palette.dart';
+import '../../core/widgets/rules_sheet.dart';
 import '../../core/widgets/candy_button.dart';
 import '../../core/widgets/candy_panel.dart';
 import '../../core/widgets/game_scaffold.dart';
@@ -18,10 +18,7 @@ import '../../core/widgets/setup_sheet.dart';
 import '../../core/widgets/sky_background.dart';
 import '../catalog.dart';
 import 'pusher_rules.dart';
-
-/// World rows above the shelf (the chute) and below it (the tray).
-const _chute = 1.6;
-const _tray = 2.0;
+import 'pusher_painter.dart';
 
 class PusherPage extends StatefulWidget {
   const PusherPage({super.key});
@@ -44,8 +41,11 @@ class _PusherPageState extends State<PusherPage>
   Duration _last = Duration.zero;
   double _cell = 0;
   double _aim = PusherGame.width / 2;
-  double _cooldown = 0;
-  int _coins = 25;
+  double _soundCooldown = 0;
+  PusherMode _mode = PusherMode.arcade;
+  bool _dialog = false;
+  bool _paused = false;
+  int _coins = 30;
   double _speed = 1.7;
   bool _running = false;
   bool _finishing = false;
@@ -75,12 +75,22 @@ class _PusherPageState extends State<PusherPage>
 
   Future<void> _openSetup() async {
     _ticker.stop();
+    _dialog = true;
     final raw = AppStore.instance.setup(GameCatalog.pusher.id) ?? const {};
     final values = await showSetupSheet(
       context,
       title: '推币机',
-      initial: {for (final e in raw.entries) e.key: '${e.value}'},
+      initial: {
+        'coins': '30',
+        'speed': '1.7',
+        'mode': 'arcade',
+        for (final e in raw.entries) e.key: '${e.value}'
+      },
       groups: const [
+        SetupGroup(key: 'mode', title: '游玩模式', choices: [
+          SetupChoice('arcade', '街机 · 不限时', candy: Candy.sun),
+          SetupChoice('timed', '90 秒挑战', candy: Candy.ocean),
+        ]),
         SetupGroup(key: 'coins', title: '起始硬币', choices: [
           SetupChoice('20', '20 枚', candy: Candy.orange),
           SetupChoice('30', '30 枚', candy: Candy.sun),
@@ -94,10 +104,16 @@ class _PusherPageState extends State<PusherPage>
       ],
     );
     if (!mounted) return;
+    _dialog = false;
+    if (values == null && _running) {
+      _resume();
+      return;
+    }
     final v = values ?? {for (final e in raw.entries) e.key: '${e.value}'};
     if (values != null) {
       AppStore.instance.saveSetup(GameCatalog.pusher.id, values);
     }
+    _mode = v['mode'] == 'timed' ? PusherMode.timed : PusherMode.arcade;
     _coins = int.tryParse(v['coins'] ?? '') ?? 30;
     _speed = double.tryParse(v['speed'] ?? '') ?? 1.7;
     _newGame();
@@ -105,9 +121,10 @@ class _PusherPageState extends State<PusherPage>
 
   void _newGame() {
     setState(() {
-      _game = PusherGame(startCoins: _coins, speed: _speed);
+      _game = PusherGame(startCoins: _coins, speed: _speed, mode: _mode);
       _aim = PusherGame.width / 2;
-      _cooldown = 0;
+      _soundCooldown = 0;
+      _paused = false;
       _finishing = false;
       _running = true;
     });
@@ -121,11 +138,27 @@ class _PusherPageState extends State<PusherPage>
         ? 0.016
         : ((elapsed - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
     _last = elapsed;
-    _cooldown = math.max(0, _cooldown - dt);
+    if (!_running ||
+        _dialog ||
+        _paused ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    _soundCooldown = math.max(0, _soundCooldown - dt);
     final fell = _game.advance(dt);
-    for (final f in fell) {
+    if (_game.contacts > 0 && _soundCooldown <= 0) {
+      Fx.play(Sfx.coinContact, volume: 0.25);
+      _soundCooldown = 0.12;
+    }
+    if (_game.stroke) Fx.play(Sfx.pusherMotor, volume: 0.2);
+    final paid = fell.where((f) => !f.side).toList();
+    if (paid.isNotEmpty) {
+      Fx.play(Sfx.coinTray,
+          volume: 0.65, buzz: paid.length > 2 ? Buzz.medium : Buzz.light);
+    }
+    for (final f in paid) {
       final big = f.kind != CoinKind.silver;
-      Fx.play(big ? Sfx.star : Sfx.pop, buzz: big ? Buzz.medium : Buzz.light);
+      if (big) Fx.play(Sfx.star, volume: 0.4);
       _burst(
           f.x,
           big
@@ -141,15 +174,14 @@ class _PusherPageState extends State<PusherPage>
     final ctx = _boardKey.currentContext;
     if (ctx == null || _cell == 0) return;
     _particles.burstFrom(
-        ctx, Offset(x * _cell, (PusherGame.depth + _chute + 0.8) * _cell),
+        ctx, Offset((5 + (x - 5) * 0.95) * _cell, 10.4 * _cell),
         count: count, colors: colors);
   }
 
   void _dropAt() {
-    if (!_running || _cooldown > 0) return;
+    if (!_running || _paused || _dialog || !_game.canDrop) return;
     if (_game.drop(_aim)) {
-      _cooldown = 0.16;
-      Fx.play(Sfx.place, volume: 0.6, buzz: Buzz.tap);
+      Fx.play(Sfx.coinSlot, volume: 0.6, buzz: Buzz.tap);
     } else {
       Fx.play(Sfx.error, volume: 0.4);
     }
@@ -166,14 +198,26 @@ class _PusherPageState extends State<PusherPage>
         stars: stars, win: stars > 0, score: score);
     final best =
         AppStore.instance.record(GameCatalog.pusher.id).bestScore ?? score;
+    final compactResult = MediaQuery.sizeOf(context).height < 500;
     final action = await showResultOverlay(
       context,
       kind: stars > 0 ? ResultKind.win : ResultKind.lose,
-      title: stars > 0 ? '赢了好多币！' : '时间到啦',
-      message: stars > 0 ? '推币机被你推空啦～' : '再来一次，多推一些币下来吧',
+      title: switch (_game.end) {
+        PusherEnd.time => '挑战完成',
+        PusherEnd.empty => '硬币用完啦',
+        _ => '本次收获',
+      },
+      message: compactResult ? null : '收获了 $score 个币，找准落点再来一局吧！',
+      showStars: !compactResult,
       stars: stars,
       newRecord: outcome.newBestScore,
-      stats: [('赢得', '$score'), ('宝石', '${_game.gems}'), ('最高', '$best')],
+      stats: [
+        if (compactResult) ('星星', '$stars/3'),
+        ('赢得', '$score'),
+        ('宝石', '${_game.gems}'),
+        ('回收', '${_game.lost}'),
+        ('最高', '$best')
+      ],
     );
     if (!mounted) return;
     if (action == ResultAction.home) {
@@ -185,10 +229,37 @@ class _PusherPageState extends State<PusherPage>
 
   void _setAim(double dx) {
     if (_cell == 0) return;
-    _aim = (dx / _cell).clamp(0.5, PusherGame.width - 0.5);
+    _aim = PusherProjection.aimFromX(dx / _cell);
+    _frame.value++;
+  }
+
+  void _resume() {
+    _last = Duration.zero;
+    if (_running && !_paused && !_dialog && !_ticker.isActive) _ticker.start();
+    _focus.requestFocus();
+  }
+
+  Future<void> _showRules() async {
+    _dialog = true;
+    _ticker.stop();
+    await showRulesSheet(context,
+        title: '推币机', rules: GameCatalog.pusher.rules);
+    if (!mounted) return;
+    _dialog = false;
+    _resume();
+  }
+
+  void _togglePause() {
+    setState(() => _paused = !_paused);
+    if (_paused) {
+      _ticker.stop();
+    } else {
+      _resume();
+    }
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (_dialog || _paused || !_running) return KeyEventResult.ignored;
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.keyA) {
@@ -203,6 +274,7 @@ class _PusherPageState extends State<PusherPage>
     } else {
       return KeyEventResult.ignored;
     }
+    _frame.value++;
     return KeyEventResult.handled;
   }
 
@@ -216,7 +288,16 @@ class _PusherPageState extends State<PusherPage>
       child: GameScaffold(
         title: '推币机',
         scenery: Scenery.candy,
-        rules: GameCatalog.pusher.rules,
+        actions: [
+          CandyIconButton(
+              icon: Icons.question_mark_rounded,
+              candy: Candy.sun,
+              onTap: _showRules),
+          CandyIconButton(
+              icon: _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+              candy: Candy.ocean,
+              onTap: _togglePause),
+        ],
         onRestart: _openSetup,
         particles: _particles,
         header: ValueListenableBuilder<int>(
@@ -231,7 +312,13 @@ class _PusherPageState extends State<PusherPage>
               CandyChip(
                   label: '赢得 ${_game.score}', candy: Candy.mint, fontSize: 16),
               CandyChip(
-                  label: '时间 ${_game.remaining.ceil()}',
+                  label: _paused
+                      ? '已暂停'
+                      : _game.settling
+                          ? '等待落币…'
+                          : _mode == PusherMode.timed
+                              ? '时间 ${_game.remaining.ceil()}'
+                              : '街机 · 不限时',
                   candy: Candy.ocean,
                   fontSize: 16),
               CandyChip(label: '最高 $best', candy: Candy.cream, fontSize: 16),
@@ -240,7 +327,7 @@ class _PusherPageState extends State<PusherPage>
         ),
         body: Center(
           child: AspectRatio(
-            aspectRatio: PusherGame.width / (PusherGame.depth + _chute + _tray),
+            aspectRatio: PusherProjection.width / PusherProjection.height,
             child: LayoutBuilder(
               builder: (context, c) {
                 _cell = c.maxWidth / PusherGame.width;
@@ -252,7 +339,7 @@ class _PusherPageState extends State<PusherPage>
                   onTap: _dropAt,
                   child: CustomPaint(
                     key: _boardKey,
-                    painter: _PusherPainter(
+                    painter: PusherPainter(
                       game: () => _game,
                       aim: () => _aim,
                       frame: _frame,
@@ -265,184 +352,52 @@ class _PusherPageState extends State<PusherPage>
         ),
         footer: ValueListenableBuilder<int>(
           valueListenable: _frame,
-          builder: (context, _, __) => Center(
-            child: CandyButton(
-              label: _game.ammo > 0 ? '投币！' : '没有币啦',
-              icon: Icons.paid_rounded,
-              candy: Candy.sun,
-              width: 200,
-              height: 60,
-              fontSize: 24,
-              onTap: _game.ammo > 0 ? _dropAt : null,
-            ),
+          builder: (context, _, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                  _paused
+                      ? '点击播放按钮继续'
+                      : _game.settling
+                          ? '推板归位后结算，请稍候'
+                          : '拖动选落点 · 松手投币 · 侧槽不返币',
+                  textAlign: TextAlign.center,
+                  style: FunText.caption(size: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 6,
+                children: [
+                  CandyButton(
+                    label: _game.ammo > 0 ? '投币！' : '等待落币',
+                    icon: Icons.paid_rounded,
+                    candy: Candy.sun,
+                    width: 140,
+                    sound: false,
+                    height: 56,
+                    fontSize: 22,
+                    onTap: !_paused && _game.canDrop ? _dropAt : null,
+                  ),
+                  CandyButton(
+                    label: '收币结算',
+                    candy: Candy.mint,
+                    width: 104,
+                    height: 56,
+                    fontSize: 16,
+                    onTap: !_paused && !_game.settling && _running
+                        ? () {
+                            _game.collect();
+                            _frame.value++;
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-}
-
-class _PusherPainter extends CustomPainter {
-  _PusherPainter({
-    required this.game,
-    required this.aim,
-    required ValueNotifier<int> frame,
-  }) : super(repaint: frame);
-
-  final PusherGame Function() game;
-  final double Function() aim;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final g = game();
-    final c = size.width / PusherGame.width;
-    final board =
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(c * 0.7));
-    canvas.drawRRect(
-        board.shift(Offset(0, c * 0.2)), Paint()..color = Palette.ink);
-    canvas.save();
-    canvas.clipRRect(board);
-    canvas.translate(0, _chute * c);
-
-    // Chute (above the back wall).
-    canvas.drawRect(Rect.fromLTWH(0, -_chute * c, size.width, _chute * c),
-        Paint()..color = Candy.berry.shade);
-    final slotX = aim() * c;
-    final slot = RRect.fromRectAndRadius(
-        Rect.fromCenter(
-            center: Offset(slotX, -_chute * c * 0.45),
-            width: c * 1.3,
-            height: c * 0.5),
-        Radius.circular(c * 0.25));
-    canvas.drawRRect(slot, Paint()..color = Palette.ink);
-    _coin(canvas, c, Offset(slotX, -_chute * c * 0.45), CoinKind.silver,
-        scale: 0.9, shadow: false);
-    // Aim guide.
-    canvas.drawLine(
-        Offset(slotX, -_chute * c * 0.2),
-        Offset(slotX, g.front * c),
-        inkStroke(c * 0.06, color: Colors.white.withOpacity(0.45)));
-
-    // Shelf.
-    final shelfH = PusherGame.depth * c;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, shelfH),
-        Paint()..color = const Color(0xFFFFF1C9));
-    for (var i = 0; i < PusherGame.depth; i++) {
-      if (i.isEven) continue;
-      canvas.drawRect(Rect.fromLTWH(0, i * c, size.width, c),
-          Paint()..color = const Color(0xFFFFE9B0));
-    }
-
-    // Shelf coins sit under the plate coins.
-    final items = List.of(g.coins)..sort((a, b) => a.y.compareTo(b.y));
-    for (final co in items.where((e) => !e.onPlate)) {
-      _drawCoin(canvas, c, co);
-    }
-
-    // Pusher plate.
-    final plate = Rect.fromLTWH(0, 0, size.width, g.front * c);
-    canvas.drawRect(plate.shift(Offset(0, c * 0.18)),
-        Paint()..color = Colors.black.withOpacity(0.18));
-    canvas.drawRect(plate, Paint()..color = Candy.ocean.face);
-    canvas.save();
-    canvas.clipRect(plate);
-    final stripe = Paint()..color = Candy.ocean.light.withOpacity(0.6);
-    for (var x = -plate.height; x < size.width; x += c * 1.4) {
-      final p = Path()
-        ..moveTo(x, plate.bottom)
-        ..lineTo(x + c * 0.7, plate.bottom)
-        ..lineTo(x + c * 0.7 + plate.height, 0)
-        ..lineTo(x + plate.height, 0)
-        ..close();
-      canvas.drawPath(p, stripe);
-    }
-    canvas.restore();
-    canvas.drawLine(Offset(0, plate.bottom), Offset(size.width, plate.bottom),
-        inkStroke(c * 0.14));
-    canvas.drawLine(
-        Offset(0, plate.bottom - c * 0.1),
-        Offset(size.width, plate.bottom - c * 0.1),
-        inkStroke(c * 0.06, color: Candy.ocean.shade));
-
-    for (final co in items.where((e) => e.onPlate)) {
-      _drawCoin(canvas, c, co);
-    }
-
-    // Side walls.
-    for (final x in [0.0, size.width]) {
-      canvas.drawLine(Offset(x, 0), Offset(x, shelfH),
-          inkStroke(c * 0.36, color: Candy.berry.face));
-    }
-
-    // Tray.
-    final tray = Rect.fromLTWH(0, shelfH, size.width, _tray * c);
-    canvas.drawRect(tray, Paint()..color = Candy.berry.shade);
-    canvas.drawRect(
-        Rect.fromLTWH(c * 0.4, shelfH + c * 0.5, size.width - c * 0.8, c * 1.2),
-        Paint()..color = Palette.ink.withOpacity(0.55));
-    for (final f in g.falls) {
-      final t = (f.age / 0.7).clamp(0.0, 1.0);
-      canvas.save();
-      canvas.clipRect(tray);
-      _coin(canvas, c, Offset(f.x * c, shelfH + c * (0.2 + t * 1.3)), f.kind,
-          scale: 1 - t * 0.4, shadow: false);
-      canvas.restore();
-    }
-    canvas.drawLine(
-        Offset(0, shelfH), Offset(size.width, shelfH), inkStroke(c * 0.12));
-
-    canvas.restore();
-    canvas.drawRRect(board, inkStroke(3));
-  }
-
-  void _drawCoin(Canvas canvas, double c, Coin co) {
-    final lift = co.z;
-    _coin(canvas, c, Offset(co.x * c, (co.y - lift * 0.35) * c), co.kind,
-        scale: 1 + lift * 0.1, shadowGap: lift);
-  }
-
-  void _coin(Canvas canvas, double c, Offset p, CoinKind kind,
-      {double scale = 1, bool shadow = true, double shadowGap = 0}) {
-    final r = kind.radius * c * scale;
-    if (shadow) {
-      canvas.drawCircle(p + Offset(r * 0.1, r * (0.18 + shadowGap * 0.25)), r,
-          Paint()..color = Colors.black.withOpacity(0.2));
-    }
-    switch (kind) {
-      case CoinKind.silver:
-        canvas.drawCircle(p, r, Paint()..color = const Color(0xFFD7DEEC));
-        canvas.drawCircle(p, r, inkStroke(c * 0.07));
-        canvas.drawCircle(
-            p, r * 0.62, inkStroke(c * 0.05, color: const Color(0xFF9AA6C2)));
-        canvas.drawCircle(p + Offset(-r * 0.35, -r * 0.35), r * 0.16,
-            Paint()..color = Colors.white.withOpacity(0.8));
-      case CoinKind.gold:
-        canvas.drawCircle(p, r, Paint()..color = Candy.sun.face);
-        canvas.drawCircle(p, r, inkStroke(c * 0.07));
-        canvas.drawCircle(
-            p, r * 0.64, inkStroke(c * 0.05, color: Candy.sun.shade));
-        paintStar(canvas, p, r * 0.46, outlineWidth: c * 0.04);
-      case CoinKind.gem:
-        final d = Path()
-          ..moveTo(p.dx - r * 0.7, p.dy - r * 0.35)
-          ..lineTo(p.dx - r * 0.35, p.dy - r * 0.85)
-          ..lineTo(p.dx + r * 0.35, p.dy - r * 0.85)
-          ..lineTo(p.dx + r * 0.7, p.dy - r * 0.35)
-          ..lineTo(p.dx, p.dy + r * 0.9)
-          ..close();
-        canvas.drawPath(d, Paint()..color = Candy.berry.face);
-        canvas.drawPath(d, inkStroke(c * 0.08));
-        canvas.drawLine(Offset(p.dx - r * 0.7, p.dy - r * 0.35),
-            Offset(p.dx + r * 0.7, p.dy - r * 0.35), inkStroke(c * 0.05));
-        canvas.drawLine(Offset(p.dx - r * 0.2, p.dy - r * 0.35),
-            Offset(p.dx, p.dy + r * 0.9), inkStroke(c * 0.04));
-        canvas.drawLine(Offset(p.dx + r * 0.2, p.dy - r * 0.35),
-            Offset(p.dx, p.dy + r * 0.9), inkStroke(c * 0.04));
-        canvas.drawCircle(p + Offset(-r * 0.3, -r * 0.6), r * 0.12,
-            Paint()..color = Colors.white.withOpacity(0.85));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PusherPainter old) => true;
 }

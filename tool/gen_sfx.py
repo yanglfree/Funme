@@ -390,6 +390,36 @@ def sfx_turn():
     return env(x * 0.8, 0.002, 0.04)
 
 
+# Arcade cabinet cues use inharmonic partials for metal rather than melody.
+def sfx_coin_contact():
+    d = 0.18
+    t = secs(d)
+    x = sum(amp * np.sin(2 * np.pi * freq * t) * np.exp(-t * rate)
+            for freq, amp, rate in ((2350, 0.6, 35), (3720, 0.35, 45), (5910, 0.2, 60)))
+    return env(x, 0.001, 0.025)
+
+
+def sfx_coin_slot():
+    out = blank(0.3)
+    place(out, sfx_coin_contact() * 0.6, 0)
+    place(out, sfx_place() * 0.4, 0.08)
+    return out
+
+
+def sfx_coin_tray():
+    out = blank(0.48)
+    for at, amp in ((0, 1), (0.08, 0.7), (0.19, 0.45), (0.3, 0.2)):
+        place(out, sfx_coin_contact() * amp, at)
+    return out
+
+
+def sfx_pusher_motor():
+    d = 0.35
+    t = secs(d)
+    x = (np.sin(2 * np.pi * 95 * t) + 0.25 * np.sin(2 * np.pi * 190 * t))
+    return env(x * np.sin(np.pi * t / d) ** 2, 0.03, 0.06)
+
+
 # ---------------------------------------------------------------------------
 # Background music: 8 bars, C major, I–vi–IV–V, seamless loop
 # ---------------------------------------------------------------------------
@@ -450,6 +480,8 @@ CUES = {
     'flap': sfx_flap, 'crash': sfx_crash, 'check': sfx_check, 'slide': sfx_slide,
     'bomb': sfx_bomb, 'combo': sfx_combo, 'undo': sfx_undo, 'hint': sfx_hint,
     'unlock': sfx_unlock, 'turn': sfx_turn,
+    'coinSlot': sfx_coin_slot, 'coinContact': sfx_coin_contact,
+    'coinTray': sfx_coin_tray, 'pusherMotor': sfx_pusher_motor,
 }
 
 
