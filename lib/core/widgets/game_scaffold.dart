@@ -4,6 +4,7 @@ import '../theme/palette.dart';
 import '../layout/side_panel_scope.dart';
 import 'candy_button.dart';
 import 'candy_panel.dart';
+import 'exit_dialog.dart';
 import 'outlined_text.dart';
 import 'particles.dart';
 import 'rules_sheet.dart';
@@ -24,6 +25,8 @@ class GameScaffold extends StatelessWidget {
     this.footer,
     this.particles,
     this.hills = false,
+    this.isGameActive,
+    this.onConfirmExit,
   });
 
   final String title;
@@ -36,6 +39,23 @@ class GameScaffold extends StatelessWidget {
   final Widget? footer;
   final ParticleController? particles;
   final bool hills;
+  final bool Function()? isGameActive;
+  final Future<bool> Function()? onConfirmExit;
+
+  Future<void> _handleBack(BuildContext context) async {
+    if (isGameActive?.call() == true) {
+      final confirm = onConfirmExit != null
+          ? onConfirmExit!()
+          : showExitGameDialog(context);
+      final shouldExit = await confirm;
+      if (!context.mounted) return;
+      if (shouldExit) {
+        Navigator.of(context).pop();
+      }
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
 
   /// Wide landscape: the board takes the full height on the left, and one
   /// side panel holds navigation, status and controls.
@@ -63,7 +83,7 @@ class GameScaffold extends StatelessWidget {
                             children: [
                               CandyIconButton(
                                 icon: Icons.arrow_back_rounded,
-                                onTap: () => Navigator.of(context).maybePop(),
+                                onTap: () => _handleBack(context),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -122,6 +142,7 @@ class GameScaffold extends StatelessWidget {
                   rules: rules,
                   onRestart: onRestart,
                   actions: actions,
+                  onBack: () => _handleBack(context),
                 ),
                 if (header != null) ...[const SizedBox(height: 8), header!],
                 const SizedBox(height: 8),
@@ -136,9 +157,25 @@ class GameScaffold extends StatelessWidget {
     if (particles != null) {
       content = ParticleLayer(controller: particles!, child: content);
     }
-    return Scaffold(
-      backgroundColor: scenery.gradient.last,
-      body: SkyBackground(scenery: scenery, hills: hills, child: content),
+    return PopScope(
+      canPop: !(isGameActive?.call() ?? false),
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (isGameActive?.call() == true) {
+          final confirm = onConfirmExit != null
+              ? onConfirmExit!()
+              : showExitGameDialog(context);
+          final shouldExit = await confirm;
+          if (!context.mounted) return;
+          if (shouldExit) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: scenery.gradient.last,
+        body: SkyBackground(scenery: scenery, hills: hills, child: content),
+      ),
     );
   }
 }
@@ -149,12 +186,14 @@ class _TopBar extends StatelessWidget {
     required this.rules,
     required this.onRestart,
     required this.actions,
+    required this.onBack,
   });
 
   final String title;
   final List<String>? rules;
   final VoidCallback? onRestart;
   final List<Widget> actions;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +201,7 @@ class _TopBar extends StatelessWidget {
       children: [
         CandyIconButton(
           icon: Icons.arrow_back_rounded,
-          onTap: () => Navigator.of(context).maybePop(),
+          onTap: onBack,
         ),
         const SizedBox(width: 8),
         Expanded(

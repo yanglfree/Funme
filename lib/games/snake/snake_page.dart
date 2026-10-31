@@ -266,6 +266,7 @@ class _SnakePageState extends State<SnakePage>
         rules: GameCatalog.snake.rules,
         onRestart: _openSetup,
         particles: _particles,
+        isGameActive: () => _phase == _Phase.playing || _phase == _Phase.paused,
         actions: [
           CandyIconButton(
             icon: _phase == _Phase.paused

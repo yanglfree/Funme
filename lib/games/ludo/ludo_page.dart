@@ -61,7 +61,7 @@ class _Timeline {
       (endsHome ? _homeFxMs : 0);
 }
 
-enum LudoFxKind { takeoff, land, fly, crash, home }
+enum LudoFxKind { takeoff, land, fly, crash, home, bomb }
 
 /// A one-shot particle cue at a board position (grid units). Instances are
 /// compared by identity so repeated cues at the same spot still notify.
@@ -90,6 +90,39 @@ class LudoController extends PartyController<LudoState, LudoAction> {
         setup.seats.length,
         planes: int.tryParse(setup.extra['planes'] ?? '') ?? 4,
       );
+
+  @override
+  Map<String, dynamic>? saveSession() {
+    if (!started || outcome != null) return null;
+    return {
+      'setup': {
+        'players': '${setup.seats.length}',
+        'humans': '${setup.humans}',
+        'level': setup.level.name,
+        ...setup.extra,
+      },
+      'ludoState': state.toJson(),
+    };
+  }
+
+  @override
+  bool restoreSession(Map<String, dynamic> data) {
+    try {
+      final setupRaw = data['setup'];
+      if (setupRaw is! Map) return false;
+      final setupMap = setupRaw.map((k, v) => MapEntry('$k', '$v'));
+      final restoredSetup = PartySetup.fromMap(setupMap);
+      final ludoRaw = data['ludoState'];
+      if (ludoRaw is! Map) return false;
+      final restoredState =
+          LudoState.fromJson(ludoRaw.cast<String, dynamic>());
+      restore(restoredSetup, restoredState);
+      flash.show('已恢复上次游戏进度', candy: Candy.mint);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   int seatToMove(LudoState state) => state.turn;
@@ -211,7 +244,20 @@ class LudoController extends PartyController<LudoState, LudoAction> {
         }
       });
     }
+    final flyLegIdx =
+        info.route.indexWhere((leg) => leg.kind == LudoStepKind.fly);
+    if (flyLegIdx >= 0 && info.bombSpots.isNotEmpty) {
+      final midTime = tl.starts[flyLegIdx] + 520;
+      for (final spot in info.bombSpots) {
+        at(midTime, () {
+          Fx.play(Sfx.crash, buzz: Buzz.heavy);
+          flash.show('航线轰炸！把对手炸回家！', candy: Candy.cherry);
+          fx.value = LudoFx(LudoFxKind.bomb, spot.$1, spot.$2, Candy.cherry);
+        });
+      }
+    }
     for (final i in info.captureLegs.toSet()) {
+      if (i == flyLegIdx && info.bombSpots.isNotEmpty) continue;
       final leg = info.route[i];
       at(tl.ends[i], () {
         Fx.play(Sfx.crash, buzz: Buzz.heavy);
@@ -530,9 +576,14 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
     vsync: this,
     duration: const Duration(milliseconds: 800),
   )..repeat(reverse: true);
+  late final AnimationController _bombController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 750),
+  );
   LudoMoveInfo? _animating;
   _Timeline? _timeline;
   double _cell = 0;
+  Offset? _bombSpot;
 
   LudoController get _c => widget.controller;
 
@@ -549,6 +600,7 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
     _c.fx.removeListener(_onFx);
     _move.dispose();
     _pulse.dispose();
+    _bombController.dispose();
     super.dispose();
   }
 
@@ -610,6 +662,30 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
           ...ParticleController.defaultColors,
           e.candy.face,
         ]);
+      case LudoFxKind.bomb:
+        _bombSpot = at;
+        _bombController.forward(from: 0);
+        p.burstFrom(context, at,
+            count: 46,
+            speed: 440,
+            size: 13,
+            shape: ParticleShape.star,
+            colors: const [
+              Color(0xFFFF2A2A),
+              Color(0xFFFF7A00),
+              Color(0xFFFFD600),
+              Color(0xFFFFFFFF),
+            ]);
+        p.burstFrom(context, at,
+            count: 26,
+            speed: 240,
+            size: 9,
+            shape: ParticleShape.dot,
+            colors: const [
+              Color(0xFFFF4D4D),
+              Color(0xFFFFAA00),
+              Color(0xFF2C2C2C),
+            ]);
     }
   }
 
@@ -705,6 +781,16 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+              if (_bombSpot != null)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _BombEffectView(
+                      position: _bombSpot!,
+                      cellSize: _cell,
+                      animation: _bombController,
+                    ),
+                  ),
+                ),
               Positioned.fill(child: FlashBanner(controller: _c.flash)),
             ],
           ),
@@ -712,6 +798,199 @@ class _LudoBoardState extends State<_LudoBoard> with TickerProviderStateMixin {
       },
     );
   }
+}
+
+class _BombEffectView extends StatelessWidget {
+  const _BombEffectView({
+    required this.position,
+    required this.cellSize,
+    required this.animation,
+  });
+
+  final Offset position;
+  final double cellSize;
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final t = animation.value;
+        if (t <= 0 || t >= 1.0) return const SizedBox.shrink();
+        return CustomPaint(
+          size: Size.infinite,
+          painter: _BombEffectPainter(
+            center: position,
+            cellSize: cellSize,
+            progress: t,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BombEffectPainter extends CustomPainter {
+  _BombEffectPainter({
+    required this.center,
+    required this.cellSize,
+    required this.progress,
+  });
+
+  final Offset center;
+  final double cellSize;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress < 0.38) {
+      // Phase 1: Cartoon Bomb lands and ticks frantically
+      final phaseT = progress / 0.38;
+      final bounce = math.sin(phaseT * math.pi) * (cellSize * 0.4);
+      final at = center - Offset(0, cellSize * (1 - phaseT) * 1.5 - bounce);
+      final r = cellSize * 0.65 * (1.0 + phaseT * 0.3);
+
+      // Shadow
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: center + Offset(0, cellSize * 0.5),
+          width: r * 1.8 * (0.8 + 0.2 * phaseT),
+          height: r * 0.6 * (0.8 + 0.2 * phaseT),
+        ),
+        Paint()..color = Palette.ink.withOpacity(0.28),
+      );
+
+      // Bomb Body (turns from dark ink to cherry red warning)
+      final bodyColor = Color.lerp(
+        Palette.ink,
+        const Color(0xFFFF2222),
+        (phaseT * 2 - 0.7).clamp(0.0, 1.0),
+      )!;
+
+      // Bomb Cap & Fuse
+      final capRect = Rect.fromCenter(
+        center: at - Offset(0, r * 0.88),
+        width: r * 0.55,
+        height: r * 0.3,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(capRect, const Radius.circular(3)),
+        Paint()..color = const Color(0xFF6B7280),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(capRect, const Radius.circular(3)),
+        inkStroke(2),
+      );
+
+      // Curved fuse line
+      final fusePath = Path()
+        ..moveTo(at.dx, at.dy - r * 0.95)
+        ..quadraticBezierTo(
+          at.dx + r * 0.5,
+          at.dy - r * 1.5,
+          at.dx + r * 0.3,
+          at.dy - r * 1.7,
+        );
+      canvas.drawPath(
+        fusePath,
+        Paint()
+          ..color = const Color(0xFFD4A373)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round,
+      );
+
+      // Spark on fuse tip
+      final sparkCenter = Offset(at.dx + r * 0.3, at.dy - r * 1.7);
+      final sparkR = (cellSize * 0.3) * (0.8 + 0.4 * math.sin(phaseT * 30));
+      canvas.drawCircle(
+        sparkCenter,
+        sparkR,
+        Paint()..color = const Color(0xFFFFD600).withOpacity(0.9),
+      );
+      canvas.drawCircle(
+        sparkCenter,
+        sparkR * 0.5,
+        Paint()..color = Colors.white,
+      );
+
+      // Draw Bomb Sphere
+      canvas.drawCircle(at, r, Paint()..color = bodyColor);
+      canvas.drawCircle(at, r, inkStroke(3));
+
+      // Specular highlight
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: at - Offset(r * 0.35, r * 0.35),
+          width: r * 0.45,
+          height: r * 0.28,
+        ),
+        Paint()..color = Colors.white.withOpacity(0.65),
+      );
+    } else {
+      // Phase 2: Massive Cartoon Explosion Cloud & Shockwave
+      final p = ((progress - 0.38) / 0.62).clamp(0.0, 1.0);
+      final fade = (1.0 - p).clamp(0.0, 1.0);
+
+      // Expanding Shockwave Ring
+      final ringR = cellSize * (0.8 + p * 2.8);
+      canvas.drawCircle(
+        center,
+        ringR,
+        Paint()
+          ..color = const Color(0xFFFFD600).withOpacity(fade * 0.8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.5, (1.0 - p) * 8),
+      );
+
+      // Fiery explosion cloud puffs
+      final cloudR = cellSize * (0.9 + p * 1.1);
+      const angles = [
+        0.0,
+        math.pi / 3,
+        2 * math.pi / 3,
+        math.pi,
+        4 * math.pi / 3,
+        5 * math.pi / 3,
+      ];
+
+      // Outer Red Fire
+      for (var i = 0; i < angles.length; i++) {
+        final ang = angles[i] + p * 0.5;
+        final dist = cloudR * 0.65;
+        final c = center + Offset(math.cos(ang) * dist, math.sin(ang) * dist);
+        canvas.drawCircle(
+          c,
+          cloudR * 0.6,
+          Paint()..color = const Color(0xFFFF2A2A).withOpacity(fade * 0.95),
+        );
+        canvas.drawCircle(
+          c,
+          cloudR * 0.6,
+          inkStroke(2.5, color: Palette.ink.withOpacity(fade)),
+        );
+      }
+
+      // Middle Orange/Yellow Fire
+      canvas.drawCircle(
+        center,
+        cloudR * 0.8,
+        Paint()..color = const Color(0xFFFF9500).withOpacity(fade),
+      );
+
+      // Core Intense White/Yellow Flash
+      canvas.drawCircle(
+        center,
+        cloudR * 0.5,
+        Paint()..color = Colors.white.withOpacity(fade),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BombEffectPainter old) =>
+      old.progress != progress || old.center != center;
 }
 
 /// Direction a plane faces once parked in its goal triangle (pointing in).

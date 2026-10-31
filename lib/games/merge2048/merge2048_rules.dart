@@ -48,6 +48,33 @@ class Merge2048 {
 
   Merge2048 clone() => Merge2048._clone(this);
 
+  Map<String, dynamic> toJson() => {
+        'size': size,
+        'score': score,
+        'nextId': _nextId,
+        'tiles': [
+          for (final t in tiles)
+            {'id': t.id, 'value': t.value, 'row': t.row, 'col': t.col}
+        ],
+      };
+
+  factory Merge2048.fromJson(Map<String, dynamic> json) {
+    final g = Merge2048(size: (json['size'] as num?)?.toInt() ?? 4);
+    g.tiles.clear();
+    g.score = (json['score'] as num?)?.toInt() ?? 0;
+    g._nextId = (json['nextId'] as num?)?.toInt() ?? 0;
+    for (final t in (json['tiles'] as List? ?? [])) {
+      final m = t as Map<String, dynamic>;
+      g.tiles.add(MergeTile(
+        (m['id'] as num).toInt(),
+        (m['value'] as num).toInt(),
+        (m['row'] as num).toInt(),
+        (m['col'] as num).toInt(),
+      ));
+    }
+    return g;
+  }
+
   int get maxTile => tiles.fold(0, (m, t) => math.max(m, t.value));
 
   bool get canMove {

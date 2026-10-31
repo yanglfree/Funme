@@ -63,13 +63,22 @@ class _PartyGameFrameState<S, M> extends State<PartyGameFrame<S, M>> {
   void initState() {
     super.initState();
     _c.addListener(_onChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openSetup());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkSessionOrSetup());
   }
 
   @override
   void dispose() {
     _c.removeListener(_onChange);
     super.dispose();
+  }
+
+  Future<void> _checkSessionOrSetup() async {
+    if (!mounted) return;
+    final saved = AppStore.instance.session(widget.info.id);
+    if (saved != null && _c.restoreSession(saved)) {
+      return;
+    }
+    await _openSetup();
   }
 
   Future<void> _openSetup() async {
@@ -90,6 +99,7 @@ class _PartyGameFrameState<S, M> extends State<PartyGameFrame<S, M>> {
             g.key: initial[g.key] ?? g.choices.first.value,
         };
     AppStore.instance.saveSetup(widget.info.id, values);
+    AppStore.instance.clearSession(widget.info.id);
     _c.start(widget.toSetup(values));
   }
 
@@ -97,8 +107,15 @@ class _PartyGameFrameState<S, M> extends State<PartyGameFrame<S, M>> {
     final outcome = _c.outcome;
     if (outcome == null) {
       _resultPending = false;
+      if (_c.started) {
+        final session = _c.saveSession();
+        if (session != null) {
+          AppStore.instance.saveSession(widget.info.id, session);
+        }
+      }
       return;
     }
+    AppStore.instance.clearSession(widget.info.id);
     if (_resultPending) return;
     _resultPending = true;
     Timer(const Duration(milliseconds: 1100), () {
@@ -150,6 +167,7 @@ class _PartyGameFrameState<S, M> extends State<PartyGameFrame<S, M>> {
       rules: widget.info.rules,
       onRestart: _openSetup,
       particles: widget.particles,
+      isGameActive: () => _c.started && _c.outcome == null,
       header: ListenableBuilder(
         listenable: _c,
         builder: (context, _) =>

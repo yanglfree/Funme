@@ -48,7 +48,8 @@ class _SudokuPageState extends State<SudokuPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openSetup());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _checkSessionOrSetup());
   }
 
   @override
@@ -57,6 +58,59 @@ class _SudokuPageState extends State<SudokuPage> {
     _particles.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void _saveSession() {
+    if (_loading || _done) return;
+    AppStore.instance.saveSession(GameCatalog.sudoku.id, {
+      'level': _level,
+      'given': _given,
+      'solution': _solution,
+      'grid': _grid,
+      'notes': _notes,
+      'hints': _hints,
+      'seconds': _seconds,
+    });
+  }
+
+  Future<void> _checkSessionOrSetup() async {
+    final saved = AppStore.instance.session(GameCatalog.sudoku.id);
+    if (saved != null) {
+      try {
+        final given = (saved['given'] as List).cast<int>();
+        final solution = (saved['solution'] as List).cast<int>();
+        final grid = (saved['grid'] as List).cast<int>();
+        final notes = (saved['notes'] as List).cast<int>();
+        final level = saved['level'] as String? ?? 'easy';
+        final hints = saved['hints'] as int? ?? 0;
+        final seconds = saved['seconds'] as int? ?? 0;
+        if (given.length == 81 && solution.length == 81 && grid.length == 81) {
+          _timer?.cancel();
+          setState(() {
+            _level = level;
+            _given = given;
+            _solution = solution;
+            _grid = grid;
+            _notes = notes.length == 81 ? notes : List.filled(81, 0);
+            _hints = hints;
+            _seconds = seconds;
+            _done = false;
+            _loading = false;
+            _selected = null;
+            _noteMode = false;
+          });
+          _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+            if (mounted && !_done) {
+              setState(() => _seconds++);
+              if (_seconds % 5 == 0) _saveSession();
+            }
+          });
+          _focus.requestFocus();
+          return;
+        }
+      } catch (_) {}
+    }
+    await _openSetup();
   }
 
   Future<void> _openSetup() async {
@@ -78,6 +132,7 @@ class _SudokuPageState extends State<SudokuPage> {
     if (values != null) {
       AppStore.instance.saveSetup(GameCatalog.sudoku.id, values);
     }
+    AppStore.instance.clearSession(GameCatalog.sudoku.id);
     final level = v['level'];
     _level = Sudoku.clueCounts.containsKey(level) ? level! : 'easy';
     await _newGame();
@@ -130,13 +185,17 @@ class _SudokuPageState extends State<SudokuPage> {
       _notes[i] = 0;
       if (_grid[i] != 0) _clearNotesAround(i, digit);
     });
-    if (_grid[i] == 0) return;
+    if (_grid[i] == 0) {
+      _saveSession();
+      return;
+    }
     if (Sudoku.conflicts(_grid).contains(i)) {
       Fx.play(Sfx.error, buzz: Buzz.light);
     } else {
       Fx.play(Sfx.place, buzz: Buzz.tap);
       _checkDone();
     }
+    _saveSession();
   }
 
   void _clearNotesAround(int i, int digit) {
@@ -153,6 +212,7 @@ class _SudokuPageState extends State<SudokuPage> {
       _grid[i] = 0;
       _notes[i] = 0;
     });
+    _saveSession();
   }
 
   void _hint() {
@@ -174,6 +234,7 @@ class _SudokuPageState extends State<SudokuPage> {
       _clearNotesAround(i, _solution[i]);
       _hints++;
     });
+    _saveSession();
     _checkDone();
   }
 
@@ -181,6 +242,7 @@ class _SudokuPageState extends State<SudokuPage> {
     if (!Sudoku.isSolved(_grid)) return;
     _done = true;
     _timer?.cancel();
+    AppStore.instance.clearSession(GameCatalog.sudoku.id);
     _finish();
   }
 
@@ -253,6 +315,7 @@ class _SudokuPageState extends State<SudokuPage> {
         rules: GameCatalog.sudoku.rules,
         onRestart: _openSetup,
         particles: _particles,
+        isGameActive: () => !_loading && !_done,
         header: Wrap(
           alignment: WrapAlignment.center,
           spacing: 10,

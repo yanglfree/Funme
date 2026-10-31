@@ -42,7 +42,8 @@ class _Merge2048PageState extends State<Merge2048Page> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openSetup());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _checkSessionOrSetup());
   }
 
   @override
@@ -50,6 +51,33 @@ class _Merge2048PageState extends State<Merge2048Page> {
     _particles.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void _saveSession() {
+    if (_finishing || _game.score == 0) return;
+    AppStore.instance
+        .saveSession(GameCatalog.merge2048.id, _game.toJson());
+  }
+
+  Future<void> _checkSessionOrSetup() async {
+    final saved = AppStore.instance.session(GameCatalog.merge2048.id);
+    if (saved != null) {
+      try {
+        final restored = Merge2048.fromJson(saved);
+        if (restored.tiles.isNotEmpty) {
+          setState(() {
+            _game = restored;
+            _size = restored.size;
+            _undo = null;
+            _celebrated = false;
+            _finishing = false;
+          });
+          _focus.requestFocus();
+          return;
+        }
+      } catch (_) {}
+    }
+    await _openSetup();
   }
 
   Future<void> _openSetup() async {
@@ -70,6 +98,7 @@ class _Merge2048PageState extends State<Merge2048Page> {
     if (values != null) {
       AppStore.instance.saveSetup(GameCatalog.merge2048.id, values);
     }
+    AppStore.instance.clearSession(GameCatalog.merge2048.id);
     _size = int.tryParse(v['size'] ?? '') == 5 ? 5 : 4;
     _newGame();
   }
@@ -100,6 +129,7 @@ class _Merge2048PageState extends State<Merge2048Page> {
       final big = merged.reduce((a, b) => a.value >= b.value ? a : b);
       if (big.value >= 64) _burst(big);
     }
+    _saveSession();
     setState(() {});
     if (_game.maxTile >= Merge2048.target && !_celebrated) {
       _celebrated = true;
@@ -127,10 +157,12 @@ class _Merge2048PageState extends State<Merge2048Page> {
       _game = u;
       _undo = null;
     });
+    _saveSession();
   }
 
   Future<void> _finish({required bool win}) async {
     _finishing = true;
+    AppStore.instance.clearSession(GameCatalog.merge2048.id);
     await Future<void>.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     final top = _game.maxTile;
@@ -192,6 +224,7 @@ class _Merge2048PageState extends State<Merge2048Page> {
         rules: GameCatalog.merge2048.rules,
         onRestart: _openSetup,
         particles: _particles,
+        isGameActive: () => !_finishing && _game.score > 0,
         actions: [
           CandyIconButton(
             icon: Icons.undo_rounded,

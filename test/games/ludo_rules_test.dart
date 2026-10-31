@@ -175,6 +175,43 @@ void main() {
     expect(bounce.planes[0][0], 52);
   });
 
+  test('flying shortcut bombs opponent plane on intersection and triggers bomb spots', () {
+    // 4 players: seats 0, 1, 2, 3 corresponding to positions 0, 1, 2, 3.
+    // Seat 0 (pos 0) plane 0 moves from 15 with dice 2 to reach flyFrom (17),
+    // which triggers flyTo (29) then owed jump to 33.
+    // Seat 2 (pos 2, opposite) has a plane resting at flyCrossProgress (52).
+    final s = withPlanes([
+      [15, -1, -1, -1],
+      [-1, -1, -1, -1],
+      [Ludo.flyCrossProgress, -1, -1, -1],
+      [-1, -1, -1, -1],
+    ], dice: 2, turn: 0, positions: const [0, 1, 2, 3]);
+
+    final after = s.apply(const LudoAction.move(0));
+    // Seat 0 should fly to 29 and jump to 33
+    expect(after.planes[0][0], Ludo.flyTo + 4);
+    // Opponent plane at cross progress should be bombed back to yard (-1)
+    expect(after.planes[2][0], Ludo.yard);
+    // Move info captured should contain (seat 2, plane 0, progress 52)
+    final info = after.last!;
+    expect(info.captured, contains((2, 0, Ludo.flyCrossProgress)));
+    expect(info.bombSpots, isNotEmpty);
+    expect(info.route.any((s) => s.kind == LudoStepKind.fly), isTrue);
+  });
+
+  test('LudoState serializes to JSON and restores correctly', () {
+    final s = withPlanes([
+      [17, 29, -1, 55],
+      [0, 52, -1, -1],
+    ], turn: 1, dice: 4, positions: const [0, 2]);
+    final json = s.toJson();
+    final restored = LudoState.fromJson(json);
+    expect(restored.positions, s.positions);
+    expect(restored.planes, s.planes);
+    expect(restored.turn, s.turn);
+    expect(restored.dice, s.dice);
+  });
+
   test('random AI games always end with a winner', () {
     final rnd = math.Random(7);
     for (final players in [2, 3, 4]) {

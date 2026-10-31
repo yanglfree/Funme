@@ -74,13 +74,22 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
   void initState() {
     super.initState();
     _c.addListener(_onChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openSetup());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkSessionOrSetup());
   }
 
   @override
   void dispose() {
     _c.removeListener(_onChange);
     super.dispose();
+  }
+
+  Future<void> _checkSessionOrSetup() async {
+    if (!mounted) return;
+    final saved = AppStore.instance.session(widget.info.id);
+    if (saved != null && _c.restoreSession(saved)) {
+      return;
+    }
+    await _openSetup();
   }
 
   Map<String, String> _savedSetup() {
@@ -101,6 +110,7 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
     if (result == null && _c.started) return;
     final values = result ?? initial;
     AppStore.instance.saveSetup(widget.info.id, values);
+    AppStore.instance.clearSession(widget.info.id);
     widget.onSetup?.call(values);
     _c.start(DuelSetup.fromMap(values));
   }
@@ -109,8 +119,15 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
     final outcome = _c.outcome;
     if (outcome == null) {
       _resultPending = false;
+      if (_c.started && _c.moveCount > 0) {
+        final session = _c.saveSession();
+        if (session != null) {
+          AppStore.instance.saveSession(widget.info.id, session);
+        }
+      }
       return;
     }
+    AppStore.instance.clearSession(widget.info.id);
     if (_resultPending) return;
     _resultPending = true;
     Timer(const Duration(milliseconds: 900), () {
@@ -187,6 +204,7 @@ class _DuelGameFrameState<S, M> extends State<DuelGameFrame<S, M>> {
       rules: widget.info.rules,
       onRestart: _openSetup,
       particles: widget.particles,
+      isGameActive: () => _c.started && _c.outcome == null && _c.moveCount > 0,
       header: ListenableBuilder(
         listenable: _c,
         builder: (context, _) =>

@@ -300,6 +300,7 @@ class _PusherPageState extends State<PusherPage>
         ],
         onRestart: _openSetup,
         particles: _particles,
+        isGameActive: () => _running && _coins > 0,
         header: ValueListenableBuilder<int>(
           valueListenable: _frame,
           builder: (context, _, __) => Wrap(

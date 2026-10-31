@@ -81,6 +81,7 @@ class AppStore extends ChangeNotifier {
   static const _keepDays = 14;
   static const _kRecordPrefix = 'record.';
   static const _kSetupPrefix = 'setup.';
+  static const _kSessionPrefix = 'session.';
 
   static AppStore? _instance;
 
@@ -255,11 +256,31 @@ class AppStore extends ChangeNotifier {
     _prefs.setString('$_kSetupPrefix$gameId', jsonEncode(setup));
   }
 
+  Map<String, dynamic>? session(String gameId) {
+    final raw = _prefs.getString('$_kSessionPrefix$gameId');
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  void saveSession(String gameId, Map<String, dynamic> data) {
+    _prefs.setString('$_kSessionPrefix$gameId', jsonEncode(data));
+  }
+
+  Future<void> clearSession(String gameId) async {
+    await _prefs.remove('$_kSessionPrefix$gameId');
+  }
+
   Future<void> clearRecords() async {
     final keys = _prefs
         .getKeys()
         .where(
-            (k) => k.startsWith(_kRecordPrefix) || k.startsWith(_kSetupPrefix))
+            (k) => k.startsWith(_kRecordPrefix) ||
+                k.startsWith(_kSetupPrefix) ||
+                k.startsWith(_kSessionPrefix))
         .toList();
     for (final key in keys) {
       await _prefs.remove(key);

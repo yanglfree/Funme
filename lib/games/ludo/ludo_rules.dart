@@ -29,6 +29,10 @@ abstract final class Ludo {
   static const flyFrom = 17;
   static const flyTo = 29;
 
+  /// The straight flight path crosses the opposite yard's home lane at step 2.
+  static const flyCrossStep = 2;
+  static const flyCrossProgress = laneStart + flyCrossStep;
+
   static const size = 17.0;
   static const center = (8.5, 8.5);
 
@@ -168,6 +172,7 @@ class LudoMoveInfo {
     required this.captureLegs,
     required this.bonus,
     this.recalled = const [],
+    this.bombSpots = const [],
   });
 
   final int seat;
@@ -189,6 +194,10 @@ class LudoMoveInfo {
 
   /// Jump / fly that happened during the move (for sounds and banners).
   final LudoStepKind? bonus;
+
+  /// Board coordinates of mid-flight or flight-landing bomb explosions caused
+  /// by flying across the board.
+  final List<(double, double)> bombSpots;
 }
 
 class LudoAction {
@@ -225,6 +234,26 @@ class LudoState {
       turn: 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'positions': positions,
+        'planes': planes,
+        'turn': turn,
+        'dice': dice,
+        'lastRoll': lastRoll,
+        'sixes': sixes,
+      };
+
+  factory LudoState.fromJson(Map<String, dynamic> json) => LudoState(
+        positions: (json['positions'] as List).cast<int>(),
+        planes: (json['planes'] as List)
+            .map((e) => (e as List).cast<int>())
+            .toList(),
+        turn: json['turn'] as int,
+        dice: json['dice'] as int?,
+        lastRoll: json['lastRoll'] as int?,
+        sixes: (json['sixes'] as int?) ?? 0,
+      );
 
   /// Board position of each seat.
   final List<int> positions;
@@ -296,6 +325,7 @@ class LudoState {
     final route = <LudoStep>[];
     final captured = <(int, int, int)>[];
     final captureLegs = <int>[];
+    final bombSpots = <(double, double)>[];
     LudoStepKind? bonus;
 
     void add(int progress, LudoStepKind kind) {
@@ -376,7 +406,28 @@ class LudoState {
         p = Ludo.flyTo;
         add(p, LudoStepKind.fly);
         bonus = LudoStepKind.fly;
+        final flyLegIndex = route.length - 1;
+
+        // Check the shortcut cross intersection with the opposite yard's home lane.
+        final oppPos = (pos + 2) % 4;
+        final oppSeat = positions.indexOf(oppPos);
+        if (oppSeat >= 0 && oppSeat != turn) {
+          for (var j = 0; j < next[oppSeat].length; j++) {
+            if (next[oppSeat][j] == Ludo.flyCrossProgress) {
+              next[oppSeat][j] = Ludo.yard;
+              captured.add((oppSeat, j, Ludo.flyCrossProgress));
+              captureLegs.add(flyLegIndex);
+              final spot = Ludo.lanes[oppPos][Ludo.flyCrossStep];
+              bombSpots.add(spot);
+            }
+          }
+        }
+
+        final countBeforeLand = captured.length;
         captureAt(p);
+        if (captured.length > countBeforeLand) {
+          bombSpots.add(Ludo.cell(pos, p));
+        }
       }
 
       if (ownSquare()) {
@@ -405,6 +456,7 @@ class LudoState {
         captured: captured,
         captureLegs: captureLegs,
         bonus: bonus,
+        bombSpots: bombSpots,
       ),
     );
   }

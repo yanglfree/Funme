@@ -133,6 +133,9 @@ abstract class DuelController<S, M> extends ChangeNotifier {
     Fx.play(Sfx.turn);
   }
 
+  Map<String, dynamic>? saveSession() => null;
+  bool restoreSession(Map<String, dynamic> data) => false;
+
   /// Minimum time an AI turn takes, so its move reads as a reply.
   Duration get aiPacing => const Duration(milliseconds: 520);
 

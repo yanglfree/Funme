@@ -105,6 +105,23 @@ abstract class PartyController<S, M> extends ChangeNotifier {
     _scheduleNext(const Duration(milliseconds: 500));
   }
 
+  void restore(PartySetup setup, S state) {
+    _setup = setup;
+    _generation++;
+    _autoTimer?.cancel();
+    _state = state;
+    _outcome = judge(state);
+    _thinking = false;
+    _started = true;
+    notifyListeners();
+    if (_outcome == null) {
+      _scheduleNext(const Duration(milliseconds: 500));
+    }
+  }
+
+  Map<String, dynamic>? saveSession() => null;
+  bool restoreSession(Map<String, dynamic> data) => false;
+
   void play(M move) {
     if (!_started || _outcome != null) return;
     final before = _state;
